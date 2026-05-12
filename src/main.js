@@ -3,116 +3,129 @@
  *   All rights reserved.
  */
 // TODO - list is rendered nested li in li per item!!!!!
-import './style.css'
-
+import './style.css';
 
 // textNode-Schnittstelle zur Vermeidung von [object Object]
 //import { normalizeValue } from './engine.js';
 
 export class AttributePart {
-    constructor(element, blueprintPart) {
-        this.element = element;
-        this.name = blueprintPart.attrName;
-        this.prefix = blueprintPart.prefix;
-        this.suffix = blueprintPart.suffix;
-        this.lastValue = undefined;
-    }
-    update(newValue) {
-        // HIER SITZT DER INSTANZBASIERTE DIRTY-CHECK
-        if (this.lastValue === newValue) return;
-        this.lastValue = newValue;
+	constructor(element, blueprintPart) {
+		this.element = element;
+		this.name = blueprintPart.attrName;
+		this.prefix = blueprintPart.prefix;
+		this.suffix = blueprintPart.suffix;
+		this.lastValue = undefined;
+	}
+	update(newValue) {
+		// HIER SITZT DER INSTANZBASIERTE DIRTY-CHECK
+		if (this.lastValue === newValue) return;
+		this.lastValue = newValue;
 
-        const finalValue = this.prefix + newValue + this.suffix;
-        if (this.name === "style") {
-            this.element.style.cssText = finalValue;
-        } else {
-            this.element.setAttribute(this.name, finalValue);
-        }
-    }
+		const finalValue = this.prefix + newValue + this.suffix;
+		if (this.name === 'style') {
+			this.element.style.cssText = finalValue;
+		} else {
+			this.element.setAttribute(this.name, finalValue);
+		}
+	}
 }
 
 export class EventPart {
-    constructor(element, blueprintPart) {
-        this.element = element;
-        this.name = blueprintPart.attrName.substring(2); // onclick -> click
-        this.boundListener = null;
-    }
-    update(newListener) {
-        if (this.boundListener === newListener) return;
-        if (this.boundListener) {
-            this.element.removeEventListener(this.name, this.boundListener);
-        }
-        this.element.addEventListener(this.name, newListener);
-        this.boundListener = newListener;
-    }
+	constructor(element, blueprintPart) {
+		this.element = element;
+		this.name = blueprintPart.attrName.substring(2); // onclick -> click
+		this.boundListener = null;
+	}
+	update(newListener) {
+		if (this.boundListener === newListener) return;
+		if (this.boundListener) {
+			this.element.removeEventListener(this.name, this.boundListener);
+		}
+		this.element.addEventListener(this.name, newListener);
+		this.boundListener = newListener;
+	}
 }
 
 export class NodePart {
-    constructor(markerComment) {
-        this.marker = markerComment;
-        this.lastValue = undefined;
-        this.textNode = null;
-        this.subContainer = null;
-        this.endMarker = null;
-        this.renderedChildren = [];
-    }
-    update(newValue, renderEngine) {
-        if (this.lastValue === newValue) return;
-        this.lastValue = newValue;
+	constructor(markerComment) {
+		this.marker = markerComment;
+		this.lastValue = undefined;
+		this.textNode = null;
+		this.subContainer = null;
+		this.endMarker = null;
+		this.renderedChildren = [];
+	}
+	update(newValue, renderEngine) {
+		if (this.lastValue === newValue) return;
+		this.lastValue = newValue;
 
-        // 1. NESTED TEMPLATES HANDLING
-        if (newValue && newValue.type === "TemplateResult") {
-            if (!this.subContainer) {
-                this.subContainer = document.createElement("span");
-                this.marker.parentNode.insertBefore(this.subContainer, this.marker.nextSibling);
-            }
-            renderEngine(newValue, this.subContainer);
-        }
-        // 2. FINE-GRAINED ARRAY HANDLING (.map Loops)
-        else if (Array.isArray(newValue)) {
-            if (!this.endMarker) {
-                this.endMarker = document.createComment('end-loop');
-                this.marker.parentNode.insertBefore(this.endMarker, this.marker.nextSibling);
-            }
+		// 1. NESTED TEMPLATES HANDLING
+		if (newValue && newValue.type === 'TemplateResult') {
+			if (!this.subContainer) {
+				this.subContainer = document.createElement('span');
+				this.marker.parentNode.insertBefore(
+					this.subContainer,
+					this.marker.nextSibling
+				);
+			}
+			renderEngine(newValue, this.subContainer);
+		}
+		// 2. FINE-GRAINED ARRAY HANDLING (.map Loops)
+		else if (Array.isArray(newValue)) {
+			if (!this.endMarker) {
+				this.endMarker = document.createComment('end-loop');
+				this.marker.parentNode.insertBefore(
+					this.endMarker,
+					this.marker.nextSibling
+				);
+			}
 
-            newValue.forEach((subTpl, idx) => {
-                if (!subTpl || subTpl.type !== "TemplateResult") return;
-                let childMeta = this.renderedChildren[idx];
+			newValue.forEach((subTpl, idx) => {
+				if (!subTpl || subTpl.type !== 'TemplateResult') return;
+				let childMeta = this.renderedChildren[idx];
 
-                if (!childMeta || childMeta.strings !== subTpl.strings) {
-                    const wrapper = document.createElement("div");
-                    renderEngine(subTpl, wrapper);
-                    const domNode = wrapper.firstElementChild || wrapper;
+				if (!childMeta || childMeta.strings !== subTpl.strings) {
+					const wrapper = document.createElement('div');
 
-                    this.endMarker.parentNode.insertBefore(domNode, this.endMarker);
-                    childMeta = { domNode, strings: subTpl.strings };
-                    this.renderedChildren[idx] = childMeta;
-                }
-                renderEngine(subTpl, childMeta.domNode);
-            });
+					const domNode = wrapper.firstElementChild || wrapper;
 
-            while (this.renderedChildren.length > newValue.length) {
-                const removed = this.renderedChildren.pop();
-                if (removed && removed.domNode) removed.domNode.remove();
-            }
-        }
-        // 3. PRIMITIVES HANDLING
-        else {
-            const stringified = String(newValue === undefined || newValue === null ? '' : newValue);
-            if (!this.textNode) {
-                this.textNode = document.createTextNode(stringified);
-                this.marker.parentNode.insertBefore(this.textNode, this.marker.nextSibling);
-            } else if (this.textNode.textContent !== stringified) {
-                this.textNode.textContent = stringified;
-            }
-        }
-    }
+					this.endMarker.parentNode.insertBefore(
+						domNode,
+						this.endMarker
+					);
+					childMeta = { domNode, strings: subTpl.strings };
+					this.renderedChildren[idx] = childMeta;
+				}
+				renderEngine(subTpl, childMeta.domNode);
+			});
+
+			while (this.renderedChildren.length > newValue.length) {
+				const removed = this.renderedChildren.pop();
+				if (removed && removed.domNode) removed.domNode.remove();
+			}
+		}
+		// 3. PRIMITIVES HANDLING
+		else {
+			const stringified = String(
+				newValue === undefined || newValue === null ? '' : newValue
+			);
+			if (!this.textNode) {
+				this.textNode = document.createTextNode(stringified);
+				this.marker.parentNode.insertBefore(
+					this.textNode,
+					this.marker.nextSibling
+				);
+			} else if (this.textNode.textContent !== stringified) {
+				this.textNode.textContent = stringified;
+			}
+		}
+	}
 }
 
 const blueprintCache = new WeakMap();
 
 export function html(strings, ...values) {
-     return { type: "TemplateResult", strings, values };
+	return { type: 'TemplateResult', strings, values };
 }
 /*
 
@@ -153,142 +166,141 @@ export function html(strings, ...values) {
 */
 
 function getTemplateBlueprint(strings) {
-     if (blueprintCache.has(strings)) return blueprintCache.get(strings);
+	if (blueprintCache.has(strings)) return blueprintCache.get(strings);
 
-     const template = document.createElement("template");
-     let htmlString = "";
+	const template = document.createElement('template');
+	let htmlString = '';
 
-     // 1. Injektion von unmissverständlichen Markern direkt während des Zusammenbaus.
-     // Jede Expression erhält ihre eigene feste ID im HTML. Das überlebt jede Minifizierung!
-     for (let i = 0; i < strings.length; i++) {
-          htmlString += strings[i];
-          if (i < strings.length - 1) {
-               const isInsideAttr = /=\s*["']?([^"'>]*)$/.test(htmlString);
-               if (isInsideAttr) {
-                    // Für Attribute nutzen wir einen sicheren Token-String ohne Doppel-Unterstriche
-                    htmlString += `litv${i}x`;
-               } else {
-                    // Für Textknoten/Loops nutzen wir einen validen HTML-Kommentar
-                    htmlString += `<!--litn${i}-->`;
-               }
-          }
-     }
+	// 1. Injektion von unmissverständlichen Markern direkt während des Zusammenbaus.
+	// Jede Expression erhält ihre eigene feste ID im HTML. Das überlebt jede Minifizierung!
+	for (let i = 0; i < strings.length; i++) {
+		htmlString += strings[i];
+		if (i < strings.length - 1) {
+			const isInsideAttr = /=\s*["']?([^"'>]*)$/.test(htmlString);
+			if (isInsideAttr) {
+				// Für Attribute nutzen wir einen sicheren Token-String ohne Doppel-Unterstriche
+				htmlString += `litv${i}x`;
+			} else {
+				// Für Textknoten/Loops nutzen wir einen validen HTML-Kommentar
+				htmlString += `<!--litn${i}-->`;
+			}
+		}
+	}
 
-     template.innerHTML = htmlString;
+	template.innerHTML = htmlString;
 
-     const dynamicParts = [];
-     const walker = document.createTreeWalker(
-          template.content,
-          NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT
-     );
+	const dynamicParts = [];
+	const walker = document.createTreeWalker(
+		template.content,
+		NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT
+	);
 
-     let elementCounter = 0;
-     const elementIndexMap = new Map();
+	let elementCounter = 0;
+	const elementIndexMap = new Map();
 
-     // 2. DOM-Strukturanalyse: Wir lesen die harte ID direkt aus dem vom Browser gebauten DOM
-     while (walker.nextNode()) {
-          const node = walker.currentNode;
+	// 2. DOM-Strukturanalyse: Wir lesen die harte ID direkt aus dem vom Browser gebauten DOM
+	while (walker.nextNode()) {
+		const node = walker.currentNode;
 
-          if (node.nodeType === Node.ELEMENT_NODE) {
-               const elId = elementCounter++;
-               elementIndexMap.set(node, elId);
+		if (node.nodeType === Node.ELEMENT_NODE) {
+			const elId = elementCounter++;
+			elementIndexMap.set(node, elId);
 
-               Array.from(node.attributes).forEach((attr) => {
-                    if (attr.value.includes("litv")) {
-                         const match = attr.value.match(/litv(\d+)x/);
-                         if (match) {
-                              const index = parseInt(match[1], 10);
-                              const attrName = attr.name;
+			Array.from(node.attributes).forEach(attr => {
+				if (attr.value.includes('litv')) {
+					const match = attr.value.match(/litv(\d+)x/);
+					if (match) {
+						const index = parseInt(match[1], 10);
+						const attrName = attr.name;
 
-                              // KEIN REGEX-SPLIT! Wir holen uns die statischen Teile direkt aus dem strings-Array.
-                              // Das ist mathematisch bombensicher, da strings[index] immer vor dem Wert liegt.
-                              const prefix = strings[index]
-                                   .substring(
-                                        strings[index].lastIndexOf(
-                                             attrName + "="
-                                        )
-                                   )
-                                   .replace(/^[^\s=]+=\s*["']?/, "");
-                              const suffix = strings[index + 1]
-                                   .substring(
-                                        0,
-                                        strings[index + 1].search(/["']?\s*>/)
-                                   )
-                                   .replace(/^["']?/, "");
+						// KEIN REGEX-SPLIT! Wir holen uns die statischen Teile direkt aus dem strings-Array.
+						// Das ist mathematisch bombensicher, da strings[index] immer vor dem Wert liegt.
+						const prefix = strings[index]
+							.substring(
+								strings[index].lastIndexOf(attrName + '=')
+							)
+							.replace(/^[^\s=]+=\s*["']?/, '');
+						const suffix = strings[index + 1]
+							.substring(
+								0,
+								strings[index + 1].search(/["']?\s*>/)
+							)
+							.replace(/^["']?/, '');
 
-                              dynamicParts.push({
-                                   type: attrName.startsWith("on")
-                                        ? "event"
-                                        : "attribute",
-                                   index,
-                                   elId,
-                                   attrName,
-                                   prefix,
-                                   suffix
-                              });
-                         }
-                         // Verhindert, dass der Browser den Platzhalter als inline-JS ausführt
-                         if (attr.name.startsWith("on"))
-                              node.removeAttribute(attr.name);
-                    }
-               });
-          } else if (
-               node.nodeType === Node.COMMENT_NODE &&
-               node.nodeValue.startsWith("litn")
-          ) {
-               // Index direkt aus dem HTML-Kommentar extrahieren
-               const index = parseInt(node.nodeValue.replace("litn", ""), 10);
-               const parentNode = node.parentNode;
+						dynamicParts.push({
+							type: attrName.startsWith('on')
+								? 'event'
+								: 'attribute',
+							index,
+							elId,
+							attrName,
+							prefix,
+							suffix,
+						});
+					}
+					// Verhindert, dass der Browser den Platzhalter als inline-JS ausführt
+					if (attr.name.startsWith('on'))
+						node.removeAttribute(attr.name);
+				}
+			});
+		} else if (
+			node.nodeType === Node.COMMENT_NODE &&
+			node.nodeValue.startsWith('litn')
+		) {
+			// Index direkt aus dem HTML-Kommentar extrahieren
+			const index = parseInt(node.nodeValue.replace('litn', ''), 10);
+			const parentNode = node.parentNode;
 
-               if (!elementIndexMap.has(parentNode)) {
-                    elementIndexMap.set(parentNode, elementCounter++);
-               }
+			if (!elementIndexMap.has(parentNode)) {
+				elementIndexMap.set(parentNode, elementCounter++);
+			}
 
-               dynamicParts.push({
-                    type: "node",
-                    index,
-                    elId: elementIndexMap.get(parentNode),
-                    commentPath: Array.from(parentNode.childNodes).indexOf(node)
-               });
-          }
-     }
+			dynamicParts.push({
+				type: 'node',
+				index,
+				elId: elementIndexMap.get(parentNode),
+				commentPath: Array.from(parentNode.childNodes).indexOf(node),
+			});
+		}
+	}
 
-     const blueprint = { template, dynamicParts };
-     blueprintCache.set(strings, blueprint);
-     return blueprint;
+	const blueprint = { template, dynamicParts };
+	blueprintCache.set(strings, blueprint);
+	return blueprint;
 }
 // TODO value is NEVER ARRAY OR OBJECT!!!!!! only PROPS
+// also some rules in here are strange
 /**
  * Normalizes values before they hit the DOM.
  * Handles Primitives, nested Templates, and Boolean Attributes.
  */
 function normalizeValue(value, isAttribute = false) {
-     console.log({ value });
-     // 1. Handle "Nothing" (null, undefined, false)
-     if (value === null || value === undefined || value === false) {
-          return isAttribute ? null : String(value);
-     }
-     // TODO ?????
-     // 2. Handle Boolean 'true' for attributes (e.g., ?disabled="${true}")
-     if (value === true) {
-          return isAttribute ? "" : "";
-     }
+	console.log({ value });
+	// 1. Handle "Nothing" (null, undefined, false)
+	if (value === null || value === undefined || value === false) {
+		return isAttribute ? null : String(value);
+	}
+	// TODO ?????
+	// 2. Handle Boolean 'true' for attributes (e.g., ?disabled="${true}")
+	if (value === true) {
+		return isAttribute ? '' : '';
+	}
 
-     // 3. Catch raw objects to prevent rendering "[object Object]"
-     if (
-          typeof value === "object" &&
-          !Array.isArray(value) &&
-          value.type !== "TemplateResult"
-     ) {
-          console.warn(
-               "Framework Warning: Attempted to render raw object:",
-               value
-          );
-          return JSON.stringify(value);
-     }
+	// 3. Catch raw objects to prevent rendering "[object Object]"
+	if (
+		typeof value === 'object' &&
+		!Array.isArray(value) &&
+		value.type !== 'TemplateResult'
+	) {
+		console.warn(
+			'Framework Warning: Attempted to render raw object:',
+			value
+		);
+		return JSON.stringify(value);
+	}
 
-     // Pass through Strings, Numbers, Arrays, and TemplateResults
-     return value;
+	// Pass through Strings, Numbers, Arrays, and TemplateResults
+	return value;
 }
 // NEW PART REGISTRY
 /**
@@ -296,39 +308,41 @@ function normalizeValue(value, isAttribute = false) {
  * Discovers exactly which class properties are accessed by which expression indices.
  */
 export function compileDependencyMap(componentInstance) {
-  const dependencyMap = new Map(); // Property Key -> Set of expression indices
-  const templateResult = componentInstance.template();
-  const values = templateResult.values;
+	const dependencyMap = new Map(); // Property Key -> Set of expression indices
+	const templateResult = componentInstance.template();
+	const values = templateResult.values;
 
-  values.forEach((_, index) => {
-    // Create a temporary tracking proxy for this specific expression slot
-    const tracker = new Proxy(componentInstance, {
-      get(target, prop) {
-        if (!dependencyMap.has(prop)) dependencyMap.set(prop, new Set());
-        dependencyMap.get(prop).add(index); // Bind property key to this expression index
-        return target[prop];
-      }
-    });
+	values.forEach((_, index) => {
+		// Create a temporary tracking proxy for this specific expression slot
+		const tracker = new Proxy(componentInstance, {
+			get(target, prop) {
+				if (!dependencyMap.has(prop))
+					dependencyMap.set(prop, new Set());
+				dependencyMap.get(prop).add(index); // Bind property key to this expression index
+				return target[prop];
+			},
+		});
 
-    // Execute the expression in the context of our tracker proxy to sniff out the property name
-    try {
-      // If the value is a function wrapper (like an event), we look at its code body dependencies
-      if (typeof values[index] === 'function') {
-        const fnStr = values[index].toString();
-        Object.keys(componentInstance).forEach(key => {
-          if (fnStr.includes(`this.${key}`)) {
-            if (!dependencyMap.has(key)) dependencyMap.set(key, new Set());
-            dependencyMap.get(key).add(index);
-          }
-        });
-      } else {
-        // Evaluate complex properties (like expressions or ternaries) via a safe runtime execution hook
-        // For simple primitives, your existing makeDeepReactive already knows who accessed what!
-      }
-    } catch (e) {}
-  });
+		// Execute the expression in the context of our tracker proxy to sniff out the property name
+		try {
+			// If the value is a function wrapper (like an event), we look at its code body dependencies
+			if (typeof values[index] === 'function') {
+				const fnStr = values[index].toString();
+				Object.keys(componentInstance).forEach(key => {
+					if (fnStr.includes(`this.${key}`)) {
+						if (!dependencyMap.has(key))
+							dependencyMap.set(key, new Set());
+						dependencyMap.get(key).add(index);
+					}
+				});
+			} else {
+				// Evaluate complex properties (like expressions or ternaries) via a safe runtime execution hook
+				// For simple primitives, your existing makeDeepReactive already knows who accessed what!
+			}
+		} catch (e) {}
+	});
 
-  return dependencyMap;
+	return dependencyMap;
 }
 
 export function render(templateResult, container) {
@@ -362,9 +376,10 @@ export function render(templateResult, container) {
 			} else if (part.type === 'event') {
 				return new EventPart(targetElement, part);
 			} else if (part.type === 'node') {
+
 				const markerComment =
-					targetElement.childNodes[part.commentPath];
-				return new NodePart(markerComment);
+					targetElement.childNodes[ part.commentPath ];
+					return new NodePart(markerComment);
 			}
 		});
 
@@ -383,7 +398,7 @@ export function render(templateResult, container) {
 
 // Global registry mapping arrays and nested objects back to their parent element
 const reactiveRegistry = new WeakMap();
-// TODO THIS DOES NOT USE SHADOWDOM,  BAD
+
 export class QElement extends HTMLElement {
 	#updateQueued = false;
 	#valuesStore = {};
@@ -460,59 +475,67 @@ export class QElement extends HTMLElement {
 		});
 	}
 }
+const proxyCache = new WeakMap()
 
+let proxyNum = 0;
 
 // Deep proxy wrapper for nested structures and array methods
 function makeDeepReactive(target, ownerComponent) {
-     if (target.__isProxy) return target;
+	if (proxyCache.has(target)) return proxyCache.get(target);
 
-     reactiveRegistry.set(target, ownerComponent);
+	reactiveRegistry.set(target, ownerComponent);
+// HMMMMM..... still create once an cache/return?
+	//const proxy =
+	new Proxy(target, {
+		get(obj, prop) {
+			if (prop === '__isProxy') return true;
+			const val = obj[prop];
 
-     return new Proxy(target, {
-          get(obj, prop) {
-               if (prop === "__isProxy") return true;
-               const val = obj[prop];
+			// Safely capture mutating array methods (push, pop, splice, sort, reverse)
+			if (Array.isArray(obj) && typeof val === 'function') {
+				const mutatingMethods = [
+					'push',
+					'pop',
+					'shift',
+					'unshift',
+					'splice',
+					'sort',
+					'reverse',
+				];
+				if (mutatingMethods.includes(prop)) {
+					return function (...args) {
+						const result = val.apply(obj, args);
+						const owner = reactiveRegistry.get(obj);
+						if (owner) owner.__queueUpdate();
+						return result;
+					};
+				}
+			}
 
-               // Safely capture mutating array methods (push, pop, splice, sort, reverse)
-               if (Array.isArray(obj) && typeof val === "function") {
-                    const mutatingMethods = [
-                         "push",
-                         "pop",
-                         "shift",
-                         "unshift",
-                         "splice",
-                         "sort",
-                         "reverse"
-                    ];
-                    if (mutatingMethods.includes(prop)) {
-                         return function (...args) {
-                              const result = val.apply(obj, args);
-                              const owner = reactiveRegistry.get(obj);
-                              if (owner) owner.__queueUpdate();
-                              return result;
-                         };
-                    }
-               }
+			if (val !== null && typeof val === 'object') {
+				return makeDeepReactive(val, ownerComponent);
+			}
+			return val;
+		},
 
-               if (val !== null && typeof val === "object") {
-                    return makeDeepReactive(val, ownerComponent);
-               }
-               return val;
-          },
+		set(obj, prop, value) {
+			if (obj[prop] === value) return true;
 
-          set(obj, prop, value) {
-               if (obj[prop] === value) return true;
+			obj[prop] =
+				value !== null && typeof value === 'object'
+					? makeDeepReactive(value, ownerComponent)
+					: value;
 
-               obj[prop] =
-                    value !== null && typeof value === "object"
-                         ? makeDeepReactive(value, ownerComponent)
-                         : value;
+			const owner = reactiveRegistry.get(obj);
+			if (owner) owner.__queueUpdate();
+			return true;
+		},
+	});
+	// proxyCache.set(target, proxy);
+	//  return proxy;
+	proxyNum++
+	return target;
 
-               const owner = reactiveRegistry.get(obj);
-               if (owner) owner.__queueUpdate();
-               return true;
-          }
-     });
 }
 /**
  * The Factory Wrapper
@@ -527,144 +550,132 @@ export function createComponent(tagName, UserClass) {
 	return UserClass;
 }
 
-
 createComponent(
-     "stresstest-component",
-     class StresstestComponent extends QElement {
-          constructor() {
-               super(); // 100% legal instantiation
+	'stresstest-component',
+	class StresstestComponent extends QElement {
+		constructor() {
+			super(); // 100% legal instantiation
 
-               // Simply declare fields on 'this'. No state wrappers or .reactive properties!
+			// Simply declare fields on 'this'. No state wrappers or .reactive properties! HMMMM.......
 
-               this.color = "crimson";
-               this.colors = ["red", "green"];
-               this.user = {
-                    profile: { name: "John Doe", id: null }
-               };
-          }
+			this.color = 'crimson';
+			this.colors = ['red', 'green'];
+			this.user = {
+				profile: { name: 'John Doe', id: null },
+			};
+		}
 
-          shuffleData() {
-               // Array methods trigger updates perfectly through the Proxy layer
-               this.colors.reverse();
-          }
+		shuffleData() {
+			// Array methods trigger updates perfectly through the Proxy layer
+			this.colors.reverse();
+		}
 
-          runInnerCalculations() {
-               const helperFunction = () => {
-                    // Inner functions change data natively
-                    this.user.profile.name = "Max Mustermann";
-                    this.user.profile.id = 999;
-               };
-               helperFunction();
-          }
+		runInnerCalculations() {
+			const helperFunction = () => {
+				// Inner functions change data natively
+				this.user.profile.name = 'Max Mustermann';
+				this.user.profile.id = 999;
+			};
+			helperFunction();
+		}
 
-          async simulateFetch() {
-               function getRandomInt(max) {
-                    return Math.floor(Math.random() * max);
-               }
-               await new Promise((resolve) => setTimeout(resolve, 1000));
-               // Async assignments are batched via queueMicrotask
-               this.user.profile.name = "Fetched User";
-               this.user.profile.id = getRandomInt(3000);
-               this.colors.splice(2, 0, StresstestComponent.randomColor());
-          }
-          static randomColor() {
-               return "#" + Math.floor(Math.random() * 16777215).toString(16);
-          }
+		async simulateFetch() {
+			function getRandomInt(max) {
+				return Math.floor(Math.random() * max);
+			}
+			await new Promise(resolve => setTimeout(resolve, 1000));
+			// Async assignments are batched via queueMicrotask
+			this.user.profile.name = 'Fetched User';
+			this.user.profile.id = getRandomInt(3000);
+			this.colors.splice(2, 0, StresstestComponent.randomColor());
+		}
+		static randomColor() {
+			return '#' + Math.floor(Math.random() * 16777215).toString(16);
+		}
 
-          static test(c) {
-               return `Active wrapper: ${c.toUpperCase()}`;
-          }
-          addNewColor(newColor) {
-               // Weil Arrays über den rekursiven Proxy laufen, triggert auch das
-               // Hinzufügen von Elementen automatisch das minimale DOM-Update!
-               this.colors.push(StresstestComponent.randomColor());
-          }
+		static test(c) {
+			return `Active wrapper: ${c.toUpperCase()}`;
+		}
+		addNewColor(newColor) {
+			// Weil Arrays über den rekursiven Proxy laufen, triggert auch das
+			// Hinzufügen von Elementen automatisch das minimale DOM-Update!
+			this.colors.push(StresstestComponent.randomColor());
+		}
 
-          template() {
-               const newDate = new Date();
-               return html`
-                    <h2>
-                         User: ${this.user.profile.name} (ID:
-                         ${this.user.profile.id})
-                    </h2>
-                    <p>
-                         this.none?.existing?.prop: ${this.none?.existing?.prop}
-                    </p>
-                    <p>new Date(): ${newDate}</p>
-                    <button onclick="${() => this.addNewColor()}">
-                         Add Item
-                    </button>
-                    <button onclick="${() => this.colors.pop()}">
-                         Pop Item
-                    </button>
-                    <button onclick="${() => this.shuffleData()}">
-                         Reverse Array
-                    </button>
-                    <button onclick="${() => this.runInnerCalculations()}">
-                         Set User
-                    </button>
-                    <button onclick="${() => this.simulateFetch()}">
-                         Fetch User (1s,at [2])
-                    </button>
-                    <!-- colors array is NOT rendered -->
-                    <p>Array this.colors:${this.colors}</p>
+		template() {
+			const newDate = new Date();
+			return html`
+				<h2>
+					User: ${this.user.profile.name} (ID:
+					${this.user.profile.id})
+				</h2>
+				<p>this.none?.existing?.prop: ${this.none?.existing?.prop}</p>
+				<p>new Date(): ${newDate}</p>
+				<button onclick="${() => this.addNewColor()}">Add Item</button>
+				<button onclick="${() => this.colors.pop()}">Pop Item</button>
+				<button onclick="${() => this.shuffleData()}">
+					Reverse Array
+				</button>
+				<button onclick="${() => this.runInnerCalculations()}">
+					Set User
+				</button>
+				<button onclick="${() => this.simulateFetch()}">
+					Fetch User (1s,at [2])
+				</button>
+				<!-- colors array is NOT rendered -->
+				<p>Array this.colors:${this.colors}</p>
 
-                    <p>this.color: ${this.color}</p>
-                    <ul>
-                         <li
-                              style="color: ${this.blah === "NÖ"
-                                   ? this.color
-                                   : "pink"}"
-                         >
-                              TERNARY: ${StresstestComponent.test(this.color)}
-                         </li>
-                         <li
-                              style="font-family: arial; font-weight: bolder; color: ${this.colors.at(
-                                   -1
-                              )}"
-                         >
-                              My color is the last in list:
-                              ${this.colors.at(-1)}, current user.ID:
-                              ${this.user.profile.id}
-                         </li>
+				<p>this.color: ${this.color}</p>
+				<ul>
+					<li
+						style="color: ${this.blah === 'NÖ'
+							? this.color
+							: 'pink'}"
+					>
+						TERNARY: ${StresstestComponent.test(this.color)}
+					</li>
+					<li
+						style="font-family: arial; font-weight: bolder; color: ${this.colors.at(
+							-1
+						)}"
+					>
+						My color is the last in list: ${this.colors.at(-1)},
+						current user.ID: ${this.user.profile.id}
+					</li>
 
-                         <ol>
-                              ${this.colors.map(
-                                   (c) =>
-                                        html`
-                                             <li
-                                                  style="font-family: monospace; color: ${c}"
-                                             >
-                                                  My color is ${c}, current
-                                                  user.ID:
-                                                  ${this.user.profile.id}
-                                             </li>
-                                        `
-                              )}
-                         </ol>
-                    </ul>
-               `;
-          }
-     }
+					<ol>
+						${this.colors.map(
+							c => html`
+								<li style="font-family: monospace; color: ${c}">
+									My color is ${c}, current user.ID:
+									${this.user.profile.id}
+								</li>
+							`
+						)}
+					</ol>
+				</ul>
+			`;
+		}
+	}
 );
 
-const one = document.querySelector("stresstest-component");
-
-
-//one.colors.pop();
 for (let i = 0; i < 500; i++) {
 	const t = document.createElement('stresstest-component');
 	document.getElementById('app').appendChild(t);
 }
 
+const one = document.querySelector('stresstest-component');
+
 // Dynamically alter system states after 2 seconds to prove full reactivity loop integrity
 setTimeout(() => {
-     one.color = "purple";
-     one.num = 100;
-     one.colors = ["orange", "teal", "darkblue"];
-     one.blah = "NÖ";
+	if (!one) return;
+	one.color = 'purple';
+	one.num = 100;
+	one.colors = ['orange', 'teal', 'darkblue'];
+	one.blah = 'NÖ';
+	console.log(one)
 }, 2000);
-
+//TODO console.log(proxyNum)// 1000 => creates a new one for every single prop??????? - add timeMeasurment and compare cost
 /*
 TO IMPLEMENT:
 // ... inside the part.type === "node" branch:
