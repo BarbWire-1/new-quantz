@@ -5,8 +5,24 @@
 // TODO - list is rendered nested li in li per item!!!!!
 import './style.css';
 
-// textNode-Schnittstelle zur Vermeidung von [object Object]
-//import { normalizeValue } from './engine.js';
+// TODO: IDEE!!!!!!
+// Pseudocode-Prinzip für deinen globalen Proxy
+// const globalRegistry = new Set();
+//
+// export const globalStore = new Proxy(targetState, {
+//     set(target, prop, value) {
+//         target[prop] = value;
+//
+//         // Zentrales Batching: Einmalig im nächsten Microtask alle angemeldeten Instanzen updaten
+//         queueMicrotask(() => {
+//             for (const instance of globalRegistry) {
+//                 instance.updateParts(); // Deine pfeilschnelle Part-Schleife
+//             }
+//         });
+//         return true;
+//     }
+// });
+
 
 export class AttributePart {
 	constructor(element, blueprintPart) {
@@ -16,10 +32,32 @@ export class AttributePart {
 		this.suffix = blueprintPart.suffix;
 		this.lastValue = undefined;
 	}
+
 	update(newValue) {
-		// HIER SITZT DER INSTANZBASIERTE DIRTY-CHECK
-		if (this.lastValue === newValue) return;
-		this.lastValue = newValue;
+		// EXKLUSIVER 'USE' NAMENSRAUM
+	if (this.name === 'use') {
+		// Hilfs-Attribut sofort entfernen, damit das DOM blitzsauber bleibt
+		this.element.removeAttribute('use');
+
+		// Fall A: Es ist dein hochentwickeltes Hook-Objekt mit State-Handling
+		if (newValue && typeof newValue === 'object' && newValue.isHook) {
+			newValue.apply(this.element, this.lastValue);
+			this.lastValue = newValue; // Zustand für den nächsten Render-Zyklus merken
+			return;
+		}
+
+		// Fall B: Es ist eine einfache, pure Funktion (DX-Shortcut)
+		if (typeof newValue === 'function') {
+			newValue(this.element);
+			return;
+		}
+
+		return; // Verhindert, dass ungültige Typen im DOM landen
+	}
+
+	// AB HIER DEIN NORMALER CORE-CODE (Dirty-Check für Standard-Attribute)
+	if (this.lastValue === newValue) return;
+	this.lastValue = newValue;
 
 		const finalValue = this.prefix + newValue + this.suffix;
 		if (this.name === 'style') {
@@ -29,6 +67,7 @@ export class AttributePart {
 		}
 	}
 }
+
 
 export class EventPart {
 	constructor(element, blueprintPart) {
@@ -79,24 +118,27 @@ export class NodePart {
 					this.marker.nextSibling
 				);
 			}
-
+// TODO here is sth broken, either renders twice or does not append
 			newValue.forEach((subTpl, idx) => {
 				if (!subTpl || subTpl.type !== 'TemplateResult') return;
-				let childMeta = this.renderedChildren[idx];
+				let childMeta = this.renderedChildren[ idx ];
+				const wrapper = document.createElement('div');
+				const domNode = wrapper.firstElementChild || wrapper;
 
 				if (!childMeta || childMeta.strings !== subTpl.strings) {
-					const wrapper = document.createElement('div');
+
 					renderEngine(subTpl, wrapper);
-					const domNode = wrapper.firstElementChild || wrapper;
+
 
 					this.endMarker.parentNode.insertBefore(
 						domNode,
 						this.endMarker
 					);
 					childMeta = { domNode, strings: subTpl.strings };
-					this.renderedChildren[idx] = childMeta;
+					this.renderedChildren[ idx ] = childMeta;
+				} else {
+					renderEngine(subTpl, childMeta.domNode);
 				}
-				//renderEngine(subTpl, childMeta.domNode);
 			});
 
 			while (this.renderedChildren.length > newValue.length) {
@@ -179,10 +221,10 @@ function getTemplateBlueprint(strings) {
 			const isInsideAttr = /=\s*["']?([^"'>]*)$/.test(htmlString);
 			if (isInsideAttr) {
 				// Für Attribute nutzen wir einen sicheren Token-String ohne Doppel-Unterstriche
-				htmlString += `litv${i}x`;
+				htmlString += `qElv${i}x`;
 			} else {
 				// Für Textknoten/Loops nutzen wir einen validen HTML-Kommentar
-				htmlString += `<!--litn${i}-->`;
+				htmlString += `<!--qEln${i}-->`;
 			}
 		}
 	}
@@ -207,8 +249,8 @@ function getTemplateBlueprint(strings) {
 			elementIndexMap.set(node, elId);
 
 			Array.from(node.attributes).forEach(attr => {
-				if (attr.value.includes('litv')) {
-					const match = attr.value.match(/litv(\d+)x/);
+				if (attr.value.includes('qElv')) {
+					const match = attr.value.match(/qElv(\d+)x/);
 					if (match) {
 						const index = parseInt(match[1], 10);
 						const attrName = attr.name;
@@ -245,10 +287,10 @@ function getTemplateBlueprint(strings) {
 			});
 		} else if (
 			node.nodeType === Node.COMMENT_NODE &&
-			node.nodeValue.startsWith('litn')
+			node.nodeValue.startsWith('qEln')
 		) {
 			// Index direkt aus dem HTML-Kommentar extrahieren
-			const index = parseInt(node.nodeValue.replace('litn', ''), 10);
+			const index = parseInt(node.nodeValue.replace('qEln', ''), 10);
 			const parentNode = node.parentNode;
 
 			if (!elementIndexMap.has(parentNode)) {
@@ -379,9 +421,6 @@ export function render(templateResult, container) {
 					targetElement.childNodes[part.commentPath];
 				return new NodePart(markerComment);
 			}
-			// Handle unknown part types gracefully
-			console.warn('Unknown part type:', part.type);
-			return { update: () => {} }; // No-op part
 		});
 
 		container.__rootInstance = { instanceParts };
@@ -529,6 +568,46 @@ function makeDeepReactive(target, ownerComponent) {
 		},
 	});
 }
+
+// 1. Die Directive-Funktion gibt eine Konfiguration zurück
+function autoScroll() {
+	return {
+		isHook: true,
+		apply(element, lastValue) {
+			// Nutze ein Microtask/rAF direkt im Hook, damit die Engine
+			// die restlichen DOM-Änderungen der Liste davor fertigstellen kann
+			queueMicrotask(() => {
+				element.scrollTop = element.scrollHeight;
+			});
+		},
+	};
+}
+
+function autoScrollToBottom() {
+	return {
+		isHook: true,
+		// Wir speichern den Zustand direkt auf der Instanz des Hooks
+		wasAtBottom: true,
+
+		apply(element, lastValue) {
+			// 1. VOR dem DOM-Update: Prüfen, ob der User unten steht
+			// (Wir nutzen 10px Puffer für Touch-Geräte und Zoom-Ungenauigkeiten)
+			this.wasAtBottom =
+				element.scrollHeight - element.clientHeight <=
+				element.scrollTop + 10;
+
+			// 2. NACH dem DOM-Update: Scrollen, falls er unten stand
+			queueMicrotask(() => {
+				if (this.wasAtBottom) {
+					element.scrollTop = element.scrollHeight;
+				}
+			});
+		},
+	};
+}
+
+
+
 /**
  * The Factory Wrapper
  * @param {string} tagName - Der HTML-Tag-Name
@@ -557,6 +636,8 @@ createComponent(
 				profile: { name: 'John Doe', id: null },
 			};
 		}
+
+
 
 		shuffleData() {
 			// Array methods trigger updates perfectly through the Proxy layer
@@ -597,6 +678,7 @@ createComponent(
 
 		template() {
 			const newDate = new Date();
+
 			return html`
 				<h2>
 					User: ${this.user.profile.name} (ID:
@@ -635,22 +717,30 @@ createComponent(
 						My color is the last in list: ${this.colors.at(-1)},
 						current user.ID: ${this.user.profile.id}
 					</li>
-
-					<ol>
-						${this.colors.map(
-							c => html`
-								<li style="font-family: monospace; color: ${c}">
-									My color is ${c}, current user.ID:
-									${this.user.profile.id}
-								</li>
-							`
-						)}
-					</ol>
+					<h4 style="margin: 10px">ListContainer</h4>
+					<div
+						id="out"
+						style="height: 150px; max-height: 200px; background-color: gray; overflow-y: auto;  padding: 5px" use="${autoScrollToBottom()}">
+						<ol>
+							${this.colors.map(
+								c => html`
+									<li
+										style="font-family: monospace; color: ${c}"
+									>
+										My color is ${c}, current user.ID:
+										${this.user.profile.id}
+									</li>
+								`
+							)}
+						</ol>
+					</div>
 				</ul>
 			`;
 		}
 	}
 );
+
+
 
 //one.colors.pop();
 for (let i = 0; i < 500; i++) {
@@ -661,10 +751,10 @@ const one = document.querySelector('stresstest-component');
 // Dynamically alter system states after 2 seconds to prove full reactivity loop integrity
 setTimeout(() => {
 	one.color = 'purple';
-	one.user.profile.id = 100;
+	one.num = 100;
 	one.colors = ['orange', 'teal', 'darkblue'];
 	one.blah = 'NÖ';
-}, 2000);
+}, 12000);
 
 /*
 TO IMPLEMENT:

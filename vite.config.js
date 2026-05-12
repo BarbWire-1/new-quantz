@@ -14,18 +14,25 @@ export default defineConfig({
 		minify: 'terser',
 
 		terserOptions: {
-			mangle: true,
+			mangle: {
+				keep_classnames: false,
+				keep_fnames: false,
+			},
 
 			compress: {
-				passes: 1,
+				passes: 100,
 				dead_code: false,
 				unused: false,
+				arguments: true,
+				booleans_as_integers: true,
+				drop_console: true,
+				keep_classnames: false,
+				keep_fnames: false,
 			},
 
 			format: {
 				comments: false,
 			},
-
 			keep_classnames: false,
 			keep_fnames: false,
 		},
