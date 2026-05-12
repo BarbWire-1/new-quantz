@@ -96,7 +96,7 @@ export class NodePart {
 					childMeta = { domNode, strings: subTpl.strings };
 					this.renderedChildren[idx] = childMeta;
 				}
-				renderEngine(subTpl, childMeta.domNode);
+				//renderEngine(subTpl, childMeta.domNode);
 			});
 
 			while (this.renderedChildren.length > newValue.length) {
@@ -379,6 +379,9 @@ export function render(templateResult, container) {
 					targetElement.childNodes[part.commentPath];
 				return new NodePart(markerComment);
 			}
+			// Handle unknown part types gracefully
+			console.warn('Unknown part type:', part.type);
+			return { update: () => {} }; // No-op part
 		});
 
 		container.__rootInstance = { instanceParts };
@@ -548,8 +551,8 @@ createComponent(
 			// Simply declare fields on 'this'. No state wrappers or .reactive properties!
 
 			this.color = 'crimson';
-			this.colors = [ 'red', 'green' ];
-			this.blah = "BLAH"
+			this.colors = ['red', 'green'];
+			this.blah = 'BLAH';
 			this.user = {
 				profile: { name: 'John Doe', id: null },
 			};
@@ -649,8 +652,6 @@ createComponent(
 	}
 );
 
-
-
 //one.colors.pop();
 for (let i = 0; i < 500; i++) {
 	const t = document.createElement('stresstest-component');
@@ -660,7 +661,7 @@ const one = document.querySelector('stresstest-component');
 // Dynamically alter system states after 2 seconds to prove full reactivity loop integrity
 setTimeout(() => {
 	one.color = 'purple';
-	one.num = 100;
+	one.user.profile.id = 100;
 	one.colors = ['orange', 'teal', 'darkblue'];
 	one.blah = 'NÖ';
 }, 2000);

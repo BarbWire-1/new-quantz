@@ -79,24 +79,27 @@ export class NodePart {
 					this.marker.nextSibling
 				);
 			}
-
+// TODO here is sth broken, either renders twice or does not append
 			newValue.forEach((subTpl, idx) => {
 				if (!subTpl || subTpl.type !== 'TemplateResult') return;
-				let childMeta = this.renderedChildren[idx];
+				let childMeta = this.renderedChildren[ idx ];
+				const wrapper = document.createElement('div');
+				const domNode = wrapper.firstElementChild || wrapper;
 
 				if (!childMeta || childMeta.strings !== subTpl.strings) {
-					const wrapper = document.createElement('div');
+
 					renderEngine(subTpl, wrapper);
-					const domNode = wrapper.firstElementChild || wrapper;
+
 
 					this.endMarker.parentNode.insertBefore(
 						domNode,
 						this.endMarker
 					);
 					childMeta = { domNode, strings: subTpl.strings };
-					this.renderedChildren[idx] = childMeta;
+					this.renderedChildren[ idx ] = childMeta;
+				} else {
+					renderEngine(subTpl, childMeta.domNode);
 				}
-				renderEngine(subTpl, childMeta.domNode);
 			});
 
 			while (this.renderedChildren.length > newValue.length) {
