@@ -4,11 +4,153 @@
  */
 // TODO - list is rendered nested li in li per item!!!!!
 import './style.css'
+
+
+// textNode-Schnittstelle zur Vermeidung von [object Object]
+//import { normalizeValue } from './engine.js';
+
+export class AttributePart {
+    constructor(element, blueprintPart) {
+        this.element = element;
+        this.name = blueprintPart.attrName;
+        this.prefix = blueprintPart.prefix;
+        this.suffix = blueprintPart.suffix;
+        this.lastValue = undefined;
+    }
+    update(newValue) {
+        // HIER SITZT DER INSTANZBASIERTE DIRTY-CHECK
+        if (this.lastValue === newValue) return;
+        this.lastValue = newValue;
+
+        const finalValue = this.prefix + newValue + this.suffix;
+        if (this.name === "style") {
+            this.element.style.cssText = finalValue;
+        } else {
+            this.element.setAttribute(this.name, finalValue);
+        }
+    }
+}
+
+export class EventPart {
+    constructor(element, blueprintPart) {
+        this.element = element;
+        this.name = blueprintPart.attrName.substring(2); // onclick -> click
+        this.boundListener = null;
+    }
+    update(newListener) {
+        if (this.boundListener === newListener) return;
+        if (this.boundListener) {
+            this.element.removeEventListener(this.name, this.boundListener);
+        }
+        this.element.addEventListener(this.name, newListener);
+        this.boundListener = newListener;
+    }
+}
+
+export class NodePart {
+    constructor(markerComment) {
+        this.marker = markerComment;
+        this.lastValue = undefined;
+        this.textNode = null;
+        this.subContainer = null;
+        this.endMarker = null;
+        this.renderedChildren = [];
+    }
+    update(newValue, renderEngine) {
+        if (this.lastValue === newValue) return;
+        this.lastValue = newValue;
+
+        // 1. NESTED TEMPLATES HANDLING
+        if (newValue && newValue.type === "TemplateResult") {
+            if (!this.subContainer) {
+                this.subContainer = document.createElement("span");
+                this.marker.parentNode.insertBefore(this.subContainer, this.marker.nextSibling);
+            }
+            renderEngine(newValue, this.subContainer);
+        }
+        // 2. FINE-GRAINED ARRAY HANDLING (.map Loops)
+        else if (Array.isArray(newValue)) {
+            if (!this.endMarker) {
+                this.endMarker = document.createComment('end-loop');
+                this.marker.parentNode.insertBefore(this.endMarker, this.marker.nextSibling);
+            }
+
+            newValue.forEach((subTpl, idx) => {
+                if (!subTpl || subTpl.type !== "TemplateResult") return;
+                let childMeta = this.renderedChildren[idx];
+
+                if (!childMeta || childMeta.strings !== subTpl.strings) {
+                    const wrapper = document.createElement("div");
+                    renderEngine(subTpl, wrapper);
+                    const domNode = wrapper.firstElementChild || wrapper;
+
+                    this.endMarker.parentNode.insertBefore(domNode, this.endMarker);
+                    childMeta = { domNode, strings: subTpl.strings };
+                    this.renderedChildren[idx] = childMeta;
+                }
+                renderEngine(subTpl, childMeta.domNode);
+            });
+
+            while (this.renderedChildren.length > newValue.length) {
+                const removed = this.renderedChildren.pop();
+                if (removed && removed.domNode) removed.domNode.remove();
+            }
+        }
+        // 3. PRIMITIVES HANDLING
+        else {
+            const stringified = String(newValue === undefined || newValue === null ? '' : newValue);
+            if (!this.textNode) {
+                this.textNode = document.createTextNode(stringified);
+                this.marker.parentNode.insertBefore(this.textNode, this.marker.nextSibling);
+            } else if (this.textNode.textContent !== stringified) {
+                this.textNode.textContent = stringified;
+            }
+        }
+    }
+}
+
 const blueprintCache = new WeakMap();
 
 export function html(strings, ...values) {
      return { type: "TemplateResult", strings, values };
 }
+/*
+
+TODO
+Wenn du deine Pause beendest und wieder einsteigen möchtest, um das System weiter zu verfeinern (z. B. das Path-Indexing [lit.dev] anzugehen, um die Initialisierungszeit bei 500 Instanzen komplett zu pulverisieren), bin ich bereit.
+
+
+export function html(strings, ...values) {
+    const template = document.createElement('template');
+
+    // 1. Wir bauen das HTML völlig normal zusammen (ohne Marker!)
+    // An den Stellen der Ausdrücke lassen wir einfach leere Textknoten oder Attribute
+    let htmlString = strings.join('');
+    template.innerHTML = htmlString;
+
+    const fragment = template.content;
+
+    // 2. Wir nutzen deinen "Context", um die Live-Verbindung herzustellen.
+    // values[i] ist hier die Funktion, z.B. () => this.color
+    values.forEach((expr, index) => {
+        if (typeof expr !== 'function') return;
+
+        // Wir erstellen eine präzise Update-Funktion für genau diese Stelle
+        const updateTarget = () => {
+            const currentValue = expr(); // Holt den echten, aktuellen Wert aus 'this'
+
+            // Logik zum Schreiben ins DOM (Text oder Attribut)
+            // Hier greift dein Proxy-Kontext an und triggert genau diesen Block,
+            // wenn sich die Variable ändert!
+        };
+
+        // Initial ausführen
+        updateTarget();
+    });
+
+    return fragment;
+}
+*/
 
 function getTemplateBlueprint(strings) {
      if (blueprintCache.has(strings)) return blueprintCache.get(strings);
@@ -197,6 +339,7 @@ export function render(templateResult, container) {
 
 	const blueprint = getTemplateBlueprint(templateResult.strings);
 
+	// ERSTALIGES MOUNTING: Erzeuge die physischen Instanz-Parts auf den geklonten Nodes
 	if (!container.__rootInstance) {
 		const clone = blueprint.template.content.cloneNode(true);
 		const elementsMap = {};
@@ -210,117 +353,33 @@ export function render(templateResult, container) {
 			elementsMap[elementCounter++] = walker.currentNode;
 		}
 
-		container.__rootInstance = { clone, elementsMap, partCaches: {} };
+		// Wir übersetzen blueprint.dynamicParts in funktionale Instanz-Parts
+		const instanceParts = blueprint.dynamicParts.map(part => {
+			const targetElement = elementsMap[part.elId] || clone;
 
-		// FIX 1: DO NOT USE container.innerHTML = "". It breaks native ShadowRoot trees.
-		// .replaceChildren() safely wipes out previous Light DOM nodes OR clones into Shadow DOM roots.
-		container.replaceChildren(clone);
+			if (part.type === 'attribute') {
+				return new AttributePart(targetElement, part);
+			} else if (part.type === 'event') {
+				return new EventPart(targetElement, part);
+			} else if (part.type === 'node') {
+				const markerComment =
+					targetElement.childNodes[part.commentPath];
+				return new NodePart(markerComment);
+			}
+		});
+
+		container.__rootInstance = { instanceParts };
+		container.replaceChildren(clone); // Shadow DOM sicher!
 	}
 
-	const { elementsMap, partCaches } = container.__rootInstance;
+	const { instanceParts } = container.__rootInstance;
 
-	blueprint.dynamicParts.forEach(part => {
-		const liveValue = templateResult.values[part.index];
-		const targetElement = elementsMap[part.elId] || container;
-		const cacheKey = `${part.elId}-${part.index}-${part.type}-${
-			part.attrName || ''
-		}`;
-
-		if (part.type === 'attribute') {
-			const finalValue = part.prefix + liveValue + part.suffix;
-			if (part.attrName === 'style') {
-				targetElement.style.cssText = finalValue;
-			} else {
-				targetElement.setAttribute(part.attrName, finalValue);
-			}
-		} else if (part.type === 'event') {
-			if (targetElement[`__bound_${part.attrName}`] !== liveValue) {
-				if (targetElement[`__bound_${part.attrName}`]) {
-					targetElement.removeEventListener(
-						part.attrName.substring(2),
-						targetElement[`__bound_${part.attrName}`]
-					);
-				}
-				targetElement.addEventListener(
-					part.attrName.substring(2),
-					liveValue
-				);
-				targetElement[`__bound_${part.attrName}`] = liveValue;
-			}
-		} else if (part.type === 'node') {
-			const markerComment = targetElement.childNodes[part.commentPath];
-			if (!markerComment) return;
-
-			if (liveValue && liveValue.type === 'TemplateResult') {
-				if (!partCaches[cacheKey]) {
-					const subContainer = document.createElement('span');
-					markerComment.parentNode.insertBefore(
-						subContainer,
-						markerComment.nextSibling
-					);
-					partCaches[cacheKey] = subContainer;
-				}
-				render(liveValue, partCaches[cacheKey]);
-			} else if (Array.isArray(liveValue)) {
-				if (!partCaches[cacheKey]) {
-					const endMarker = document.createComment(
-						`end-loop-${part.index}`
-					);
-					markerComment.parentNode.insertBefore(
-						endMarker,
-						markerComment.nextSibling
-					);
-					partCaches[cacheKey] = { endMarker, rendered: [] };
-				}
-
-				const cache = partCaches[cacheKey];
-
-				liveValue.forEach((subTpl, idx) => {
-					if (!subTpl || subTpl.type !== 'TemplateResult') return;
-					let childMeta = cache.rendered[idx];
-					if (!childMeta || childMeta.strings !== subTpl.strings) {
-						const wrapper = document.createElement('div');
-
-						// FIX 2 (RESOLVES TODOY): Restore rendering for array items.
-						// This ensures the sub-template creates its HTML layout before extraction.
-						render(subTpl, wrapper);
-
-						const domNode = wrapper.firstElementChild || wrapper;
-
-						cache.endMarker.parentNode.insertBefore(
-							domNode,
-							cache.endMarker
-						);
-						childMeta = { domNode, strings: subTpl.strings };
-						cache.rendered[idx] = childMeta;
-					}
-					// Direct fine-grained properties injection update loop
-					render(subTpl, childMeta.domNode);
-				});
-
-				while (cache.rendered.length > liveValue.length) {
-					const removed = cache.rendered.pop();
-					if (removed && removed.domNode) removed.domNode.remove();
-				}
-			} else {
-				let txtNode = partCaches[cacheKey];
-				const stringifiedValue = normalizeValue(liveValue);
-
-				if (!txtNode) {
-					txtNode = document.createTextNode(stringifiedValue);
-					markerComment.parentNode.insertBefore(
-						txtNode,
-						markerComment.nextSibling
-					);
-					partCaches[cacheKey] = txtNode;
-				} else if (txtNode.textContent !== stringifiedValue) {
-					txtNode.textContent = stringifiedValue;
-				}
-			}
-		}
-	});
+	// RUNTIME UPDATE: Das ist jetzt der gesamte Code, der bei Updates ausgeführt wird!
+	// Keine Ifs, kein Tree-Walking. Ein simpler, flacher, C++-naher Array-Loop.
+	for (let i = 0; i < instanceParts.length; i++) {
+		instanceParts[i].update(templateResult.values[i], render);
+	}
 }
-
 
 // Global registry mapping arrays and nested objects back to their parent element
 const reactiveRegistry = new WeakMap();
@@ -470,8 +529,8 @@ export function createComponent(tagName, UserClass) {
 
 
 createComponent(
-     "codepen-component",
-     class CodePenComponent extends QElement {
+     "stresstest-component",
+     class StresstestComponent extends QElement {
           constructor() {
                super(); // 100% legal instantiation
 
@@ -506,7 +565,7 @@ createComponent(
                // Async assignments are batched via queueMicrotask
                this.user.profile.name = "Fetched User";
                this.user.profile.id = getRandomInt(3000);
-               this.colors.splice(2, 0, CodePenComponent.randomColor());
+               this.colors.splice(2, 0, StresstestComponent.randomColor());
           }
           static randomColor() {
                return "#" + Math.floor(Math.random() * 16777215).toString(16);
@@ -518,7 +577,7 @@ createComponent(
           addNewColor(newColor) {
                // Weil Arrays über den rekursiven Proxy laufen, triggert auch das
                // Hinzufügen von Elementen automatisch das minimale DOM-Update!
-               this.colors.push(CodePenComponent.randomColor());
+               this.colors.push(StresstestComponent.randomColor());
           }
 
           template() {
@@ -557,7 +616,7 @@ createComponent(
                                    ? this.color
                                    : "pink"}"
                          >
-                              TERNARY: ${CodePenComponent.test(this.color)}
+                              TERNARY: ${StresstestComponent.test(this.color)}
                          </li>
                          <li
                               style="font-family: arial; font-weight: bolder; color: ${this.colors.at(
@@ -589,73 +648,14 @@ createComponent(
      }
 );
 
-class StresstestComponent extends QElement {
-     constructor() {
-          super(); // Legally constructs HTMLElement without browser validation errors
+const one = document.querySelector("stresstest-component");
 
-          // Declare properties inside the reactive window
-          this.num = 0;
-          this.colors = ["red", "green"];
-          this.user = {
-               profile: { name: "John Doe" }
-          };
-     }
-
-     shuffleData() {
-          this.colors.reverse();
-          this.colors.push("blue");
-          // Batched together: DOM updates exactly once!
-     }
-
-     runInnerCalculations() {
-          const helperFunction = () => {
-               // Deep nested updates inside an inner scope work perfectly via the proxy reference
-               this.user.profile.name = "Max Mustermann";
-               this.num = 999;
-          };
-          helperFunction();
-     }
-
-     async simulateFetch() {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          // Asynchronous changes map correctly over the microtask pipeline
-          this.user.profile.name = "Data from API";
-          this.colors.splice(0, 1, "teal", "gold");
-     }
-
-     template() {
-          return html`
-               <h2>User: ${this.user.profile.name} (ID: ${this.num})</h2>
-
-               <button onclick="${() => this.shuffleData()}">
-                    Manipulate Array
-               </button>
-               <button onclick="${() => this.runInnerCalculations()}">
-                    Run Inner Function
-               </button>
-               <button onclick="${() => this.simulateFetch()}">
-                    Async Fetch (1s)
-               </button>
-
-               <ul>
-                    ${this.colors.map(
-                         (c) =>
-                              html`
-                                   <li style="color: ${c}">Color: ${c}</li>
-                              `
-                    )}
-               </ul>
-          `;
-     }
-}
-
-customElements.define("stresstest-component", StresstestComponent);
-const one = document.querySelector("codepen-component");
-console.log(one.constructor.name);
 
 //one.colors.pop();
-console.log(Object.getOwnPropertyNames(one));
-console.log(one.colors);
+for (let i = 0; i < 500; i++) {
+	const t = document.createElement('stresstest-component');
+	document.getElementById('app').appendChild(t);
+}
 
 // Dynamically alter system states after 2 seconds to prove full reactivity loop integrity
 setTimeout(() => {
