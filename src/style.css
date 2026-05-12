@@ -1,3 +1,7 @@
+/*
+ *   Copyright (c) 2026
+ *   All rights reserved.
+ */
 :root {
   --text: #6b6375;
   --text-h: #08060d;
@@ -293,4 +297,7 @@ code {
     right: 0;
     border-right-color: var(--border);
   }
+}
+codepen-component{
+  width: 50%
 }

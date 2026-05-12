@@ -150,219 +150,218 @@ function normalizeValue(value, isAttribute = false) {
 }
 
 export function render(templateResult, container) {
-     if (!templateResult || templateResult.type !== "TemplateResult") {
-          container.textContent = String(templateResult);
-          return;
-     }
+	if (!templateResult || templateResult.type !== 'TemplateResult') {
+		container.textContent = String(templateResult);
+		return;
+	}
 
-     const blueprint = getTemplateBlueprint(templateResult.strings);
+	const blueprint = getTemplateBlueprint(templateResult.strings);
 
-     if (!container.__rootInstance) {
-          const clone = blueprint.template.content.cloneNode(true);
-          const elementsMap = {};
-          let elementCounter = 0;
+	if (!container.__rootInstance) {
+		const clone = blueprint.template.content.cloneNode(true);
+		const elementsMap = {};
+		let elementCounter = 0;
 
-          const walker = document.createTreeWalker(
-               clone,
-               NodeFilter.SHOW_ELEMENT
-          );
-          while (walker.nextNode()) {
-               elementsMap[elementCounter++] = walker.currentNode;
-          }
+		const walker = document.createTreeWalker(
+			clone,
+			NodeFilter.SHOW_ELEMENT
+		);
+		while (walker.nextNode()) {
+			elementsMap[elementCounter++] = walker.currentNode;
+		}
 
-          container.__rootInstance = { clone, elementsMap, partCaches: {} };
-          container.innerHTML = "";
-          container.appendChild(clone);
-     }
+		container.__rootInstance = { clone, elementsMap, partCaches: {} };
 
-     const { elementsMap, partCaches } = container.__rootInstance;
+		// FIX 1: DO NOT USE container.innerHTML = "". It breaks native ShadowRoot trees.
+		// .replaceChildren() safely wipes out previous Light DOM nodes OR clones into Shadow DOM roots.
+		container.replaceChildren(clone);
+	}
 
-     // 3. Laufzeit-Update: Direkte Wertezuordnung über die ID, komplett ohne Variablennamen!
-     blueprint.dynamicParts.forEach((part) => {
-          const liveValue = templateResult.values[part.index];
-          const targetElement = elementsMap[part.elId] || container;
-          const cacheKey = `${part.elId}-${part.index}-${part.type}-${
-               part.attrName || ""
-          }`;
+	const { elementsMap, partCaches } = container.__rootInstance;
 
-          if (part.type === "attribute") {
-               const finalValue = part.prefix + liveValue + part.suffix;
-               if (part.attrName === "style") {
-                    targetElement.style.cssText = finalValue;
-               } else {
-                    targetElement.setAttribute(part.attrName, finalValue);
-               }
-          } else if (part.type === "event") {
-               if (targetElement[`__bound_${part.attrName}`] !== liveValue) {
-                    if (targetElement[`__bound_${part.attrName}`]) {
-                         targetElement.removeEventListener(
-                              part.attrName.substring(2),
-                              targetElement[`__bound_${part.attrName}`]
-                         );
-                    }
-                    targetElement.addEventListener(
-                         part.attrName.substring(2),
-                         liveValue
-                    );
-                    targetElement[`__bound_${part.attrName}`] = liveValue;
-               }
-          } else if (part.type === "node") {
-               const markerComment = targetElement.childNodes[part.commentPath];
-               if (!markerComment) return;
+	blueprint.dynamicParts.forEach(part => {
+		const liveValue = templateResult.values[part.index];
+		const targetElement = elementsMap[part.elId] || container;
+		const cacheKey = `${part.elId}-${part.index}-${part.type}-${
+			part.attrName || ''
+		}`;
 
-               if (liveValue && liveValue.type === "TemplateResult") {
-                    if (!partCaches[cacheKey]) {
-                         const subContainer = document.createElement("span");
-                         markerComment.parentNode.insertBefore(
-                              subContainer,
-                              markerComment.nextSibling
-                         );
-                         partCaches[cacheKey] = subContainer;
-                    }
-                    render(liveValue, partCaches[cacheKey]);
-                    // TODOY: handles full array only in loop ??????????
-               } else if (Array.isArray(liveValue)) {
-                    if (!partCaches[cacheKey]) {
-                         const endMarker = document.createComment(
-                              `end-loop-${part.index}`
-                         );
-                         markerComment.parentNode.insertBefore(
-                              endMarker,
-                              markerComment.nextSibling
-                         );
-                         partCaches[cacheKey] = { endMarker, rendered: [] };
-                    }
+		if (part.type === 'attribute') {
+			const finalValue = part.prefix + liveValue + part.suffix;
+			if (part.attrName === 'style') {
+				targetElement.style.cssText = finalValue;
+			} else {
+				targetElement.setAttribute(part.attrName, finalValue);
+			}
+		} else if (part.type === 'event') {
+			if (targetElement[`__bound_${part.attrName}`] !== liveValue) {
+				if (targetElement[`__bound_${part.attrName}`]) {
+					targetElement.removeEventListener(
+						part.attrName.substring(2),
+						targetElement[`__bound_${part.attrName}`]
+					);
+				}
+				targetElement.addEventListener(
+					part.attrName.substring(2),
+					liveValue
+				);
+				targetElement[`__bound_${part.attrName}`] = liveValue;
+			}
+		} else if (part.type === 'node') {
+			const markerComment = targetElement.childNodes[part.commentPath];
+			if (!markerComment) return;
 
-                    const cache = partCaches[cacheKey];
+			if (liveValue && liveValue.type === 'TemplateResult') {
+				if (!partCaches[cacheKey]) {
+					const subContainer = document.createElement('span');
+					markerComment.parentNode.insertBefore(
+						subContainer,
+						markerComment.nextSibling
+					);
+					partCaches[cacheKey] = subContainer;
+				}
+				render(liveValue, partCaches[cacheKey]);
+			} else if (Array.isArray(liveValue)) {
+				if (!partCaches[cacheKey]) {
+					const endMarker = document.createComment(
+						`end-loop-${part.index}`
+					);
+					markerComment.parentNode.insertBefore(
+						endMarker,
+						markerComment.nextSibling
+					);
+					partCaches[cacheKey] = { endMarker, rendered: [] };
+				}
 
-                    liveValue.forEach((subTpl, idx) => {
-                         if (!subTpl || subTpl.type !== "TemplateResult")
-                              return;
-                         let childMeta = cache.rendered[idx];
-                         if (
-                              !childMeta ||
-                              childMeta.strings !== subTpl.strings
-                         ) {
-                              const wrapper = document.createElement("div");
-                              //render(subTpl, wrapper);
-                              const domNode =
-                                   wrapper.firstElementChild || wrapper;
+				const cache = partCaches[cacheKey];
 
-                              cache.endMarker.parentNode.insertBefore(
-                                   domNode,
-                                   cache.endMarker
-                              );
-                              childMeta = { domNode, strings: subTpl.strings };
-                              cache.rendered[idx] = childMeta;
-                         }
-                         render(subTpl, childMeta.domNode);
-                    });
+				liveValue.forEach((subTpl, idx) => {
+					if (!subTpl || subTpl.type !== 'TemplateResult') return;
+					let childMeta = cache.rendered[idx];
+					if (!childMeta || childMeta.strings !== subTpl.strings) {
+						const wrapper = document.createElement('div');
 
-                    while (cache.rendered.length > liveValue.length) {
-                         const removed = cache.rendered.pop();
-                         if (removed && removed.domNode)
-                              removed.domNode.remove();
-                    }
-               } else {
-                    const liveValue = templateResult.values[part.index];
+						// FIX 2 (RESOLVES TODOY): Restore rendering for array items.
+						// This ensures the sub-template creates its HTML layout before extraction.
+						render(subTpl, wrapper);
 
-                    let txtNode = partCaches[cacheKey];
-                    const stringifiedValue = normalizeValue(liveValue);
+						const domNode = wrapper.firstElementChild || wrapper;
 
-                    if (!txtNode) {
-                         txtNode = document.createTextNode(stringifiedValue);
-                         markerComment.parentNode.insertBefore(
-                              txtNode,
-                              markerComment.nextSibling
-                         );
-                         partCaches[cacheKey] = txtNode;
-                    } else if (txtNode.textContent !== stringifiedValue) {
-                         txtNode.textContent = stringifiedValue;
-                    }
-               }
-          }
-     });
+						cache.endMarker.parentNode.insertBefore(
+							domNode,
+							cache.endMarker
+						);
+						childMeta = { domNode, strings: subTpl.strings };
+						cache.rendered[idx] = childMeta;
+					}
+					// Direct fine-grained properties injection update loop
+					render(subTpl, childMeta.domNode);
+				});
+
+				while (cache.rendered.length > liveValue.length) {
+					const removed = cache.rendered.pop();
+					if (removed && removed.domNode) removed.domNode.remove();
+				}
+			} else {
+				let txtNode = partCaches[cacheKey];
+				const stringifiedValue = normalizeValue(liveValue);
+
+				if (!txtNode) {
+					txtNode = document.createTextNode(stringifiedValue);
+					markerComment.parentNode.insertBefore(
+						txtNode,
+						markerComment.nextSibling
+					);
+					partCaches[cacheKey] = txtNode;
+				} else if (txtNode.textContent !== stringifiedValue) {
+					txtNode.textContent = stringifiedValue;
+				}
+			}
+		}
+	});
 }
+
 
 // Global registry mapping arrays and nested objects back to their parent element
 const reactiveRegistry = new WeakMap();
+// TODO THIS DOES NOT USE SHADOWDOM,  BAD
+export class QElement extends HTMLElement {
+	#updateQueued = false;
+	#valuesStore = {};
 
-class ReactiveElement extends HTMLElement {
-     #updateQueued;
-     #valuesStore;
-     constructor() {
-          super(); // Legally calls HTMLElement without browser constructor errors
-          this.#updateQueued = false;
-          this.#valuesStore = {}; // Secret container for actual data values
+	constructor() {
+		super();
+		// Versuch 1: Shadow DOM direkt im Constructor erzeugen
+		try {
+			if (!this.shadowRoot) {
+				this.attachShadow({ mode: 'open' });
+			}
+		} catch (e) {
+			// Wird vom Browser abgefangen, falls die Registrierung noch nicht vollständig war
+		}
+	}
 
-          reactiveRegistry.set(this, this);
+	connectedCallback() {
+		reactiveRegistry.set(this, this);
 
-          // Run this logic right after initialization completes
-          queueMicrotask(() => this.__convertFieldsToReactive());
-     }
+		// Versuch 2 (Sicherheitsgurt): Falls das Shadow DOM im Constructor blockiert wurde,
+		// erzwingen wir es JETZT, da das Element definitiv registriert und im DOM ist.
+		if (!this.shadowRoot) {
+			this.attachShadow({ mode: 'open' });
+		}
 
-     connectedCallback() {
-          this.__queueUpdate();
-     }
+		// Felder reaktiv machen
+		this.__convertFieldsToReactive();
+		this.__queueUpdate();
+	}
 
-     __convertFieldsToReactive() {
-          // Read all keys initialized on 'this' (e.g., this.color, this.colors)
-          Object.keys(this).forEach((key) => {
-               if (key.startsWith("__")) return;
+	__convertFieldsToReactive() {
+		Object.keys(this).forEach(key => {
+			if (key.startsWith('__') || key.startsWith('#')) return;
+			const initialValue = this[key];
 
-               const initialValue = this[key];
+			this.#valuesStore[key] =
+				initialValue !== null && typeof initialValue === 'object'
+					? makeDeepReactive(initialValue, this)
+					: initialValue;
 
-               // Store the initial value inside our proxy-wrapped storage mechanism
-               if (initialValue !== null && typeof initialValue === "object") {
-                    this.#valuesStore[key] = makeDeepReactive(
-                         initialValue,
-                         this
-                    );
-               } else {
-                    this.#valuesStore[key] = initialValue;
-               }
+			Object.defineProperty(this, key, {
+				get: () => this.#valuesStore[key],
+				set: newValue => {
+					if (this.#valuesStore[key] === newValue) return;
 
-               // REDEFINE PROPERTY: Erase the raw property and hook into setters/getters
-               Object.defineProperty(this, key, {
-                    get: () => {
-                         return this.#valuesStore[key];
-                    },
-                    set: (newValue) => {
-                         if (this.#valuesStore[key] === newValue) return;
+					if (newValue !== null && typeof newValue === 'object') {
+						this.#valuesStore[key] = makeDeepReactive(
+							newValue,
+							this
+						);
+					} else {
+						this.#valuesStore[key] = newValue;
+					}
 
-                         if (
-                              newValue !== null &&
-                              typeof newValue === "object"
-                         ) {
-                              this.#valuesStore[key] = makeDeepReactive(
-                                   newValue,
-                                   this
-                              );
-                         } else {
-                              this.#valuesStore[key] = newValue;
-                         }
+					this.__queueUpdate();
+				},
+				configurable: true,
+				enumerable: true,
+			});
+		});
+	}
 
-                         this.__queueUpdate();
-                    },
-                    configurable: true,
-                    enumerable: true
-               });
-          });
-     }
+	__queueUpdate() {
+		if (this.#updateQueued) return;
+		this.#updateQueued = true;
 
-     __queueUpdate() {
-          if (this.#updateQueued) return;
-          this.#updateQueued = true;
-
-          // Async batching scheduler ensures the engine renders exactly once per loop cycle
-          queueMicrotask(() => {
-               this.#updateQueued = false;
-               if (this.template) {
-                    render(this.template(), this);
-               }
-          });
-     }
+		queueMicrotask(() => {
+			this.#updateQueued = false;
+			if (this.template) {
+				// Wir rendern NIEMALS in 'this' (Light DOM).
+				// Wir nutzen AUSNAHMSLOS den shadowRoot.
+				render(this.template(), this.shadowRoot);
+			}
+		});
+	}
 }
+
 
 // Deep proxy wrapper for nested structures and array methods
 function makeDeepReactive(target, ownerComponent) {
@@ -422,16 +421,17 @@ function makeDeepReactive(target, ownerComponent) {
  * @param {Function} classFactory - Eine Funktion oder die Klasse selbst
  */
 export function createComponent(tagName, UserClass) {
-     // 1. Wir registrieren die Klasse direkt beim Browser
-     customElements.define(tagName, UserClass);
-
-     // 2. Wir geben die Klasse zurück (für Exports oder weitere Nutzung)
-     return UserClass;
+	if (!customElements.get(tagName)) {
+		// Sofortige, harte Registrierung beim Browser
+		customElements.define(tagName, UserClass);
+	}
+	return UserClass;
 }
+
 
 createComponent(
      "codepen-component",
-     class CodePenComponent extends ReactiveElement {
+     class CodePenComponent extends QElement {
           constructor() {
                super(); // 100% legal instantiation
 
@@ -549,7 +549,7 @@ createComponent(
      }
 );
 
-class StresstestComponent extends ReactiveElement {
+class StresstestComponent extends QElement {
      constructor() {
           super(); // Legally constructs HTMLElement without browser validation errors
 
