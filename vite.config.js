@@ -21,20 +21,18 @@ export default defineConfig({
 
 			compress: {
 				passes: 100,
-				dead_code: false,
-				unused: false,
+				dead_code: true,
+				unused: true,
 				arguments: true,
 				booleans_as_integers: true,
 				drop_console: true,
-				keep_classnames: false,
-				keep_fnames: false,
+
 			},
 
 			format: {
 				comments: false,
 			},
-			keep_classnames: false,
-			keep_fnames: false,
+
 		},
 	},
 });
