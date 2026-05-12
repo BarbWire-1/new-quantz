@@ -1,3 +1,7 @@
+/*
+ *   Copyright (c) 2026
+ *   All rights reserved.
+ */
 import { getReactiveProxy } from './reactivity.js';
 
 export class QuantzEngine {

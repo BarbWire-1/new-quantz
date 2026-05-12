@@ -1,3 +1,7 @@
+/*
+ *   Copyright (c) 2026
+ *   All rights reserved.
+ */
 import { render } from './engine.js';
 import { getReactiveProxy } from './reactivity.js';
 
