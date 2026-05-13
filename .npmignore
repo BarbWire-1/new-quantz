@@ -1,0 +1,11 @@
+# ignore dev files
+src/
+node_modules/
+.github/
+
+# ignore config files
+vite.config.js
+.gitignore
+pnpm-lock.yaml
+package-lock.json
+yarn.lock

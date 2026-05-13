@@ -1,15 +1,38 @@
 {
-  "name": "new-quantz",
-  "version": "0.0.0",
-  "private": true,
+  "name": "quantz",
+"version": "0.0.1-alpha.3",
+"desription": "An ultra-lightweight reactive template engine for native Web Components with global event delegation. Built close to the DOM with optional plugins for a rich, intuitive DX experience.",
+ "private": false,
   "type": "module",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./element": "./dist/element.js",
+    "./factory": "./dist/factory.js",
+    "./plugins/scroll": "./dist/plugins/scroll.js"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "watch": "vite build --watch",
     "preview": "vite preview"
   },
   "devDependencies": {
     "terser": "^5.47.1",
     "vite": "^8.0.12"
-  }
+  },
+    "repository": {
+      "type": "git",
+      "url": "git+github.com"
+    },
+    "bugs": {
+      "url": "github.com"
+    },
+    "homepage": "github.com",
 }
