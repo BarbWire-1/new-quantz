@@ -29,10 +29,10 @@
   },
     "repository": {
       "type": "git",
-      "url": "git+github.com"
+      "url": "https://github.com/BarbWire-1/new-quantz"
     },
     "bugs": {
-      "url": "github.com"
+      "url": "https://github.com/BarbWire-1/new-quantz"
     },
-    "homepage": "github.com",
+    "homepage": "https://github.com/BarbWire-1/new-quantz"
 }
