@@ -32,6 +32,8 @@ function normalizeValue(value, isAttribute = false) {
 	return value;
 }
 // Deep proxy wrapper for nested structures and array methods
+// TODO add Map, Set - try to use one proxy for handling all instances systemwide
+// downside: would retun proxy-objects and might be tricky in this context as no depsGraph
 export function makeDeepReactive(target, ownerComponent) {
 	if (target.__isProxy) return target;
 
@@ -41,8 +43,8 @@ export function makeDeepReactive(target, ownerComponent) {
 		get(obj, prop) {
 			if (prop === '__isProxy') return true;
 			const val = obj[prop];
-
-			// Safely capture mutating array methods (push, pop, splice, sort, reverse)
+			// recurse for complex object types
+			// capture mutating array methods (push, pop, splice, sort, reverse)
 			if (Array.isArray(obj) && typeof val === 'function') {
 				const mutatingMethods = [
 					'push',

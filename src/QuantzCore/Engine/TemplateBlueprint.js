@@ -9,17 +9,17 @@ export function getTemplateBlueprint(strings) {
 	const template = document.createElement('template');
 	let htmlString = '';
 
-	// 1. Injektion von unmissverständlichen Markern direkt während des Zusammenbaus.
-	// Jede Expression erhält ihre eigene feste ID im HTML. Das überlebt jede Minifizierung!
+	// unambigious markers (survived all minification, other than previous string-adventure)
 	for (let i = 0; i < strings.length; i++) {
+
 		htmlString += strings[i];
 		if (i < strings.length - 1) {
 			const isInsideAttr = /=\s*["']?([^"'>]*)$/.test(htmlString);
 			if (isInsideAttr) {
-				// Für Attribute nutzen wir einen sicheren Token-String ohne Doppel-Unterstriche
+				// attr-marker
 				htmlString += `qElv${i}x`;
 			} else {
-				// Für Textknoten/Loops nutzen wir einen validen HTML-Kommentar
+				// nodes/nodes in loop- marker
 				htmlString += `<!--qEln${i}-->`;
 			}
 		}
@@ -36,7 +36,7 @@ export function getTemplateBlueprint(strings) {
 	let elementCounter = 0;
 	const elementIndexMap = new Map();
 
-	// 2. DOM-Strukturanalyse: Wir lesen die harte ID direkt aus dem vom Browser gebauten DOM
+	// get margerId's and cache
 	while (walker.nextNode()) {
 		const node = walker.currentNode;
 
@@ -45,14 +45,15 @@ export function getTemplateBlueprint(strings) {
 			elementIndexMap.set(node, elId);
 
 			Array.from(node.attributes).forEach(attr => {
+
 				if (attr.value.includes('qElv')) {
+					// set and bind index
 					const match = attr.value.match(/qElv(\d+)x/);
 					if (match) {
 						const index = parseInt(match[1], 10);
 						const attrName = attr.name;
 
-						// KEIN REGEX-SPLIT! Wir holen uns die statischen Teile direkt aus dem strings-Array.
-						// Das ist mathematisch bombensicher, da strings[index] immer vor dem Wert liegt.
+
 						const prefix = strings[index]
 							.substring(
 								strings[index].lastIndexOf(attrName + '=')
@@ -76,7 +77,7 @@ export function getTemplateBlueprint(strings) {
 							suffix,
 						});
 					}
-					// Verhindert, dass der Browser den Platzhalter als inline-JS ausführt
+					// TODO remove this? - allow native events? TEST!!!
 					if (attr.name.startsWith('on'))
 						node.removeAttribute(attr.name);
 				}
@@ -85,7 +86,7 @@ export function getTemplateBlueprint(strings) {
 			node.nodeType === Node.COMMENT_NODE &&
 			node.nodeValue.startsWith('qEln')
 		) {
-			// Index direkt aus dem HTML-Kommentar extrahieren
+			// get index from commentMarker
 			const index = parseInt(node.nodeValue.replace('qEln', ''), 10);
 			const parentNode = node.parentNode;
 

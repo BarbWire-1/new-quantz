@@ -15,7 +15,7 @@ export function render(templateResult, container) {
 
 	const blueprint = getTemplateBlueprint(templateResult.strings);
 
-	// ERSTALIGES MOUNTING: Erzeuge die physischen Instanz-Parts auf den geklonten Nodes
+	// first instantiation: walk the passed html` code, get parts to set markes and bind
 	if (!container.__rootInstance) {
 		const clone = blueprint.template.content.cloneNode(true);
 		const elementsMap = {};
@@ -29,7 +29,7 @@ export function render(templateResult, container) {
 			elementsMap[elementCounter++] = walker.currentNode;
 		}
 
-		// Wir übersetzen blueprint.dynamicParts in funktionale Instanz-Parts
+		// recognized dynamic parts => passed partHandler classes
 		const instanceParts = blueprint.dynamicParts.map(part => {
 			const targetElement = elementsMap[part.elId] || clone;
 
@@ -45,13 +45,12 @@ export function render(templateResult, container) {
 		});
 
 		container.__rootInstance = { instanceParts };
-		container.replaceChildren(clone); // Shadow DOM sicher!
+		container.replaceChildren(clone);
 	}
 
 	const { instanceParts } = container.__rootInstance;
 
-	// RUNTIME UPDATE: Das ist jetzt der gesamte Code, der bei Updates ausgeführt wird!
-	// Keine Ifs, kein Tree-Walking. Ein simpler, flacher, C++-naher Array-Loop.
+	// RUNTIME UPDATE:
 	for (let i = 0; i < instanceParts.length; i++) {
 		instanceParts[i].update(templateResult.values[i], render);
 	}

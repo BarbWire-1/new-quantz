@@ -12,30 +12,28 @@ export class QElement extends HTMLElement {
 
 	constructor() {
 		super();
-		// Versuch 1: Shadow DOM direkt im Constructor erzeugen
+		// if already registered
 		try {
 			if (!this.shadowRoot) {
 				this.attachShadow({ mode: 'open' });
 			}
 		} catch (e) {
-			// Wird vom Browser abgefangen, falls die Registrierung noch nicht vollständig war
+			// do nothing
 		}
 	}
 
 	connectedCallback() {
 		reactiveRegistry.set(this, this);
 
-		// Versuch 2 (Sicherheitsgurt): Falls das Shadow DOM im Constructor blockiert wurde,
-		// erzwingen wir es JETZT, da das Element definitiv registriert und im DOM ist.
 		if (!this.shadowRoot) {
 			this.attachShadow({ mode: 'open' });
 		}
 
-		// Felder reaktiv machen
+		// handle props
 		this.__convertFieldsToReactive();
 		this.__queueUpdate();
 	}
-
+	// Keeps access to own Properties while proxy handles updates (target and frag)
 	__convertFieldsToReactive() {
 		Object.keys(this).forEach(key => {
 			if (key.startsWith('__') || key.startsWith('#')) return;
@@ -75,8 +73,7 @@ export class QElement extends HTMLElement {
 		queueMicrotask(() => {
 			this.#updateQueued = false;
 			if (this.template) {
-				// Wir rendern NIEMALS in 'this' (Light DOM).
-				// Wir nutzen AUSNAHMSLOS den shadowRoot.
+				// does NOT rerender all template but replace bound nodes (frag) with clones of newValue
 				render(this.template(), this.shadowRoot);
 			}
 		});

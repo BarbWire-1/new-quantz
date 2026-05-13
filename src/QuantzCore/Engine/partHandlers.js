@@ -19,7 +19,7 @@ export class AttributePart {
 		this.suffix = blueprintPart.suffix;
 		this.lastValue = undefined;
 
-		// // EINMALIGES PARSING FÜR EVENT-MODIFIER IM CONSTRUCTOR (0 ms Runtime-Overhead)
+		// Once parsed for  event-modifyer in constructor (0 ms Runtime-Overhead)
 		if (this.name.startsWith('@')) {
 			const parts = this.name.slice(1).toLowerCase().split('.'); //
 			this.pureEventType = parts[0]; // 'click'
@@ -27,7 +27,7 @@ export class AttributePart {
 	}
 
 	update(newValue) {
-		// EXKLUSIVER 'USE' NAMENSRAUM
+		// use- namespace: use="{handlerName}" for predefined nice-to-have (directives)
 		if (this.name === 'use') {
 			this.element.removeAttribute('use');
 
@@ -43,8 +43,8 @@ export class AttributePart {
 			}
 			return;
 		}
-
-		// GLOBALE EVENT-DELEGATION MIT HOCHPERFORMANTEN MODIFIER-PAKETEN
+		// TODO check lifecycle of global events/events on el, should be ok, but untested yet
+		// handles global eventDelegation
 		if (this.name.startsWith('@') && typeof newValue === 'function') {
 			const eventTypeMatch = this.name.match(/@([a-zA-Z]+)/);
 			if (!eventTypeMatch) return;
@@ -59,16 +59,16 @@ export class AttributePart {
 			const hasPrevent =
 				this.name.includes('.prevent') || this.modifiers?.prevent;
 
-			// 1. Speicher auf dem Element initialisieren, falls noch nicht geschehen
+			// bind to el
 			if (!this.element[DELEGATED_STORAGE]) {
 				this.element[DELEGATED_STORAGE] = {};
 			}
 
-			// 2. PRÜFUNG: Haben wir diese exakte Direktive für dieses Element schon registriert?
+			// once-check
 			const isAlreadyRegistered =
 				!!this.element[DELEGATED_STORAGE][this.name];
 
-			// 3. Callback im Speicher aktualisieren (damit Closures/neue Daten aus dem Render funktionieren)
+			// update with newValue
 			this.element[DELEGATED_STORAGE][this.name] = {
 				eventType: pureEventType,
 				callback: newValue,
@@ -76,13 +76,12 @@ export class AttributePart {
 				args: pureArgs,
 			};
 
-			// WEG 1: Wenn .prevent aktiv ist -> Als EIN lokaler Kombi-Handler ausführen
+
 			if (hasPrevent) {
-				// NUR REGISTRIEREN, WENN ES NOCH NICHT EXISTIERT!
+				// register ONCE on el
 				if (!isAlreadyRegistered) {
 					this.element.addEventListener(pureEventType, event => {
-						// WICHTIG: Wir holen uns die Konfiguration DYNAMISCH bei jedem Event-Trigger aus dem Speicher.
-						// Dadurch altert der Callback nicht (kein Stale-Closure-Problem).
+						// dynamic lookup of configState
 						const currentConfig =
 							this.element[DELEGATED_STORAGE][this.name];
 						if (
@@ -114,8 +113,7 @@ export class AttributePart {
 				return;
 			}
 
-			// WEG 2: Für alle normalen Events ohne .prevent -> Weiterhin globale Delegation
-			// Da wir oben isAlreadyRegistered prüfen, müssen wir hier nicht doppelt delegieren
+			// "normal" events
 			if (!isAlreadyRegistered) {
 				ensureGlobalDelegation(pureEventType);
 			}
@@ -123,11 +121,12 @@ export class AttributePart {
 			return;
 		}
 
-		// AB HIER DEIN NORMALER CORE-CODE (Dirty-Check für Standard-Attribute)
+		// dirty-check
 		if (this.lastValue === newValue) return;
 		this.lastValue = newValue;
 
 		const finalValue = this.prefix + newValue + this.suffix;
+		// TODO add other object attr (transform....)
 		if (this.name === 'style') {
 			this.element.style.cssText = finalValue;
 		} else {
@@ -142,6 +141,7 @@ export class EventPart {
 		this.name = blueprintPart.attrName.substring(2); // onclick -> click
 		this.boundListener = null;
 	}
+	// do not like setting eventListeners instead of respecting couce to use native events, but...
 	update(newListener) {
 		if (this.boundListener === newListener) return;
 		// switch to new instances fraQ
@@ -154,7 +154,7 @@ export class EventPart {
 		this.boundListener = newListener;
 	}
 }
-
+// textNodes are lookedup for update by markerComments (seen at lit)
 export class NodePart {
 	constructor(markerComment) {
 		this.marker = markerComment;
@@ -168,7 +168,7 @@ export class NodePart {
 		if (this.lastValue === newValue) return;
 		this.lastValue = newValue;
 
-		// 1. NESTED TEMPLATES HANDLING
+		//nested templates
 		if (newValue && newValue.type === 'TemplateResult') {
 			if (!this.subContainer) {
 				this.subContainer = document.createElement('span');
@@ -179,7 +179,8 @@ export class NodePart {
 			}
 			renderEngine(newValue, this.subContainer);
 		}
-		// 2. FINE-GRAINED ARRAY HANDLING (.map Loops)
+		// TODO check for map, else is just an array ;)
+		// fine-grained array-handling (.map Loops)
 		else if (Array.isArray(newValue)) {
 			if (!this.endMarker) {
 				this.endMarker = document.createComment('end-loop');
@@ -188,7 +189,7 @@ export class NodePart {
 					this.marker.nextSibling
 				);
 			}
-			// TODO  does not handle if NOT in map
+
 			newValue.forEach((subTpl, idx) => {
 				if (!subTpl || subTpl.type !== 'TemplateResult') return;
 				let childMeta = this.renderedChildren[idx];
@@ -214,7 +215,7 @@ export class NodePart {
 				if (removed && removed.domNode) removed.domNode.remove();
 			}
 		}
-		// 3. PRIMITIVES HANDLING
+		// primitives
 		else {
 			const stringified = String(
 				newValue === undefined || newValue === null ? '' : newValue
