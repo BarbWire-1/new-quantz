@@ -22,6 +22,56 @@ import './style.css';
 //         return true;
 //     }
 // });
+// HOOKS
+const activeGlobalEvents = new Set();
+const DELEGATED_STORAGE = '__delegated_events__';
+
+
+// TODO fix handler with parts!
+function ensureGlobalDelegation(eventType) {
+	if (activeGlobalEvents.has(eventType)) return;
+	activeGlobalEvents.add(eventType);
+
+	document.addEventListener(eventType, event => {
+		// Dein bestehender, genialer Shadow-DOM-Fix!
+		const path = event.composedPath();
+
+		for (const current of path) {
+			if (current === document.getElementById('app') || current === window) break;
+
+			const storage = current[DELEGATED_STORAGE];
+			// Da wir jetzt ein Objekt ablegen, holen wir uns hier config
+			const config = storage?.[eventType];
+
+			if (config && typeof config.callback === 'function') {
+				const { callback, modifiers } = config;
+
+				// 1. NATIVE BROWSER-MODIFIER DIREKT ABHAKEN
+				if (modifiers.includes('prevent')) event.preventDefault();
+				if (modifiers.includes('stop')) event.stopPropagation();
+
+				// 2. KEY-FILTER (z.B. für @keyup.enter)
+				if (event.key && modifiers.length > 0) {
+					const isTargetKeyMatched = modifiers.some(
+						mod =>
+							mod === event.key.toLowerCase() ||
+							(mod === 'space' && event.key === ' ')
+					);
+					// Wenn wir Tasten-Modifier im Array haben, aber keiner matcht -> weitergehen
+					const hasKeyModifiers = modifiers.some(
+						mod => !['prevent', 'stop'].includes(mod)
+					);
+					if (hasKeyModifiers && !isTargetKeyMatched) continue;
+				}
+
+				// 3. pass context
+				callback(event, current);
+				return; // Kette beenden
+			}
+		}
+	});
+}
+
 
 
 export class AttributePart {
@@ -31,33 +81,54 @@ export class AttributePart {
 		this.prefix = blueprintPart.prefix;
 		this.suffix = blueprintPart.suffix;
 		this.lastValue = undefined;
+
+		// EINMALIGES PARSING FÜR EVENT-MODIFIER IM CONSTRUCTOR (0 ms Runtime-Overhead)
+		if (this.name.startsWith('@')) {
+			const parts = this.name.slice(1).toLowerCase().split('.'); // '@click.prevent' -> ['click', 'prevent']
+			this.pureEventType = parts[0]; // 'click'
+			this.modifiers = parts.slice(1); // ['prevent'] (oder ein leeres Array [])
+		}
 	}
 
 	update(newValue) {
 		// EXKLUSIVER 'USE' NAMENSRAUM
-	if (this.name === 'use') {
-		// Hilfs-Attribut sofort entfernen, damit das DOM blitzsauber bleibt
-		this.element.removeAttribute('use');
+		if (this.name === 'use') {
+			this.element.removeAttribute('use');
 
-		// Fall A: Es ist dein hochentwickeltes Hook-Objekt mit State-Handling
-		if (newValue && typeof newValue === 'object' && newValue.isHook) {
-			newValue.apply(this.element, this.lastValue);
-			this.lastValue = newValue; // Zustand für den nächsten Render-Zyklus merken
+			if (newValue && typeof newValue === 'object' && newValue.isHook) {
+				newValue.apply(this.element, this.lastValue);
+				this.lastValue = newValue;
+				return;
+			}
+
+			if (typeof newValue === 'function') {
+				newValue(this.element);
+				return;
+			}
 			return;
 		}
 
-		// Fall B: Es ist eine einfache, pure Funktion (DX-Shortcut)
-		if (typeof newValue === 'function') {
-			newValue(this.element);
+		// GLOBALE EVENT-DELEGATION MIT HOCHPERFORMANTEN MODIFIER-PAKETEN
+		if (this.name.startsWith('@') && typeof newValue === 'function') {
+			// 1. Nutze den im Constructor vorbereiteten reinen Event-Namen (z.B. 'click')
+			ensureGlobalDelegation(this.pureEventType);
+
+			// 2. Speicher die Funktion UND die Modifier als Paket direkt auf dem Element
+			if (!this.element[DELEGATED_STORAGE]) {
+				this.element[DELEGATED_STORAGE] = {};
+			}
+
+			// Wir legen ein Konfigurations-Objekt ab, das deine globale Schleife ausliest
+			this.element[DELEGATED_STORAGE][this.pureEventType] = {
+				callback: newValue,
+				modifiers: this.modifiers,
+			};
 			return;
 		}
 
-		return; // Verhindert, dass ungültige Typen im DOM landen
-	}
-
-	// AB HIER DEIN NORMALER CORE-CODE (Dirty-Check für Standard-Attribute)
-	if (this.lastValue === newValue) return;
-	this.lastValue = newValue;
+		// AB HIER DEIN NORMALER CORE-CODE (Dirty-Check für Standard-Attribute)
+		if (this.lastValue === newValue) return;
+		this.lastValue = newValue;
 
 		const finalValue = this.prefix + newValue + this.suffix;
 		if (this.name === 'style') {
@@ -67,6 +138,7 @@ export class AttributePart {
 		}
 	}
 }
+
 
 
 export class EventPart {
@@ -568,6 +640,41 @@ function makeDeepReactive(target, ownerComponent) {
 		},
 	});
 }
+// Der wiederverwendbare Lego-Stein in deiner Library
+export function listenGlobal(eventType, callback) {
+	return (element) => {
+		// Wir hängen einen einzigen Listener an das Dokument (oder deine App-Wurzel)
+		const handler = (event) => {
+			// Prüfen, ob das geklickte Element (oder eines seiner Elternteile) unser Element ist
+			if (element.contains(event.target)) {
+				callback(event, element);
+			}
+		};
+
+		document.addEventListener(eventType, handler);
+
+		// HACK FÜR HEUTE (Solange du noch keine Core-Teardown-Engine hast):
+		// Wir nutzen ein unsichtbares, temporäres Attribut oder einen Marker auf dem Element,
+		// um den Listener zu entfernen, falls das Element jemals aus dem DOM fliegt.
+		// Alternativ speicherst du den Handler auf dem Element selbst:
+		element._cleanupGlobalEvent = () => document.removeEventListener(eventType, handler);
+	};
+}
+export function onKeyPress(targetKey, callback) {
+	return element => {
+		const handler = event => {
+			if (event.key === targetKey) {
+				// Optional: Nur feuern, wenn das Element fokussiert oder sichtbar ist
+				callback(event, element);
+			}
+		};
+
+		window.addEventListener('keydown', handler);
+		element._cleanupKey = () =>
+			window.removeEventListener('keydown', handler);
+	};
+}
+
 
 // 1. Die Directive-Funktion gibt eine Konfiguration zurück
 function autoScroll() {
@@ -680,6 +787,19 @@ createComponent(
 			const newDate = new Date();
 
 			return html`
+				<form @submit.prevent="${(e, el) => this.sendData()}">
+					<!-- 1. .prevent: Verhindert das Neuladen der Seite -->
+					<input
+						type="text"
+						@keyup.enter="${() => this.addNewColor()}"
+					/>
+					<!-- 2. .enter: Reagiert NUR bei der Enter-Taste -->
+
+					<button @click.stop="${() => this.colors.pop()}">
+						Löschen
+					</button>
+					<!-- 3. .stop: Stoppt das Bubbling nach oben -->
+				</form>
 				<h2>
 					User: ${this.user.profile.name} (ID:
 					${this.user.profile.id})
@@ -697,6 +817,13 @@ createComponent(
 				<button onclick="${() => this.simulateFetch()}">
 					Fetch User (1s,at [2])
 				</button>
+				<h4>Global EventDelegation</h4>
+				<button @click="${() => this.addNewColor()}">Add Item</button>
+				<button @click="${() => this.colors.pop()}">Pop Item</button>
+				<button @click="${() => this.shuffleData()}">
+					Reverse Array
+				</button>
+
 				<!-- colors array is NOT rendered -->
 				<p>Array this.colors:${this.colors}</p>
 
@@ -720,7 +847,9 @@ createComponent(
 					<h4 style="margin: 10px">ListContainer</h4>
 					<div
 						id="out"
-						style="height: 150px; max-height: 200px; background-color: gray; overflow-y: auto;  padding: 5px" use="${autoScrollToBottom()}">
+						style="height: 150px; max-height: 200px; background-color: gray; overflow-y: auto;  padding: 5px"
+						use="${autoScrollToBottom()}"
+					>
 						<ol>
 							${this.colors.map(
 								c => html`
