@@ -22,55 +22,114 @@ import './style.css';
 //         return true;
 //     }
 // });
+/*
+TODO <MODIFIER>// Registrierung von Modifier-Strategien
+const MODIFIER_HOOKS = {
+    prevent: (element, eventType, args, callback) => {
+        element.addEventListener(eventType, event => {
+            if (eventType === 'keydown' && args.length > 0) {
+                const pressedKey = event.key.toLowerCase();
+                if (!args.map(k => k.toLowerCase()).includes(pressedKey)) return;
+            }
+            event.preventDefault();
+            callback(event, element, args);
+        }, { passive: false });
+        return true; // Signalisiert: "Ich habe das Event lokal übernommen"
+    },
+    // Hier können Entwickler später einfach .stop, .enter oder .debounce anbauen!
+};
+
+// In deiner Registrierung:
+const activeModifier = Object.keys(this.modifiers || {}).find(mod => MODIFIER_HOOKS[mod])
+    || this.modifiersArray?.find(mod => MODIFIER_HOOKS[mod]);
+
+if (activeModifier) {
+    // Übergib die Kontrolle an den Hook
+    const handled = MODIFIER_HOOKS[activeModifier](this.element, pureEventType, pureArgs, newValue);
+    if (handled) return; // Globale Delegation wird übersprungen
+}
+
+// ... Fallback auf deine standardmäßige globale Delegation für normale Events
+
+</MODIFIER>
+*/
 // HOOKS
 const activeGlobalEvents = new Set();
 const DELEGATED_STORAGE = '__delegated_events__';
 
 
-// TODO fix handler with parts!
+// TODO modifiers seems to rerister as blocks after several actions (???)
 function ensureGlobalDelegation(eventType) {
 	if (activeGlobalEvents.has(eventType)) return;
 	activeGlobalEvents.add(eventType);
 
-	document.addEventListener(eventType, event => {
-		// Dein bestehender, genialer Shadow-DOM-Fix!
-		const path = event.composedPath();
+	// WICHTIG: { passive: false } als dritten Parameter übergeben!
+	document.addEventListener(
+		eventType,
+		event => {
+			const path = event.composedPath();
 
-		for (const current of path) {
-			if (current === document.getElementById('app') || current === window) break;
-
-			const storage = current[DELEGATED_STORAGE];
-			// Da wir jetzt ein Objekt ablegen, holen wir uns hier config
-			const config = storage?.[eventType];
-
-			if (config && typeof config.callback === 'function') {
-				const { callback, modifiers } = config;
-
-				// 1. NATIVE BROWSER-MODIFIER DIREKT ABHAKEN
-				if (modifiers.includes('prevent')) event.preventDefault();
-				if (modifiers.includes('stop')) event.stopPropagation();
-
-				// 2. KEY-FILTER (z.B. für @keyup.enter)
-				if (event.key && modifiers.length > 0) {
-					const isTargetKeyMatched = modifiers.some(
-						mod =>
-							mod === event.key.toLowerCase() ||
-							(mod === 'space' && event.key === ' ')
-					);
-					// Wenn wir Tasten-Modifier im Array haben, aber keiner matcht -> weitergehen
-					const hasKeyModifiers = modifiers.some(
-						mod => !['prevent', 'stop'].includes(mod)
-					);
-					if (hasKeyModifiers && !isTargetKeyMatched) continue;
+			for (const current of path) {
+				if (
+					current === document.getElementById('app') ||
+					current === window
+				) {
+					break;
 				}
 
-				// 3. pass context
-				callback(event, current);
-				return; // Kette beenden
+				const storage = current[DELEGATED_STORAGE];
+				if (!storage) continue;
+
+				let hasExecuted = false;
+
+				for (const fullKey in storage) {
+					const config = storage[fullKey];
+
+					if (
+						config.eventType !== eventType ||
+						typeof config.callback !== 'function'
+					) {
+						continue;
+					}
+
+					const { callback, args, modifiers } = config;
+
+					// Keydown Filter
+					if (eventType === 'keydown' && args.length > 0) {
+						const pressedKey = event.key.toLowerCase();
+						if (
+							!args.map(k => k.toLowerCase()).includes(pressedKey)
+						) {
+							continue;
+						}
+					}
+
+					// DER FIX FÜR PREVENTDEFAULT:
+					// Wir führen preventDefault SOFORT aus, noch BEVOR dein Callback läuft.
+					// Entweder weil dein Modifier-Objekt es sagt, oder weil .prevent im String steht.
+					if (modifiers?.prevent || fullKey.includes('.prevent')) {
+						event.preventDefault();
+					}
+
+					// Falls du auch .stop nutzt, hier direkt mit fixieren
+					if (modifiers?.stop || fullKey.includes('.stop')) {
+						event.stopPropagation();
+					}
+
+					// Callback ausführen
+					callback(event, current, args);
+					hasExecuted = true;
+				}
+
+				if (hasExecuted) {
+					return;
+				}
 			}
-		}
-	});
+		},
+		{ passive: true }
+	); // <-- HIER: Erzwingt, dass preventDefault() erlaubt ist
 }
+
 
 
 
@@ -82,11 +141,11 @@ export class AttributePart {
 		this.suffix = blueprintPart.suffix;
 		this.lastValue = undefined;
 
-		// EINMALIGES PARSING FÜR EVENT-MODIFIER IM CONSTRUCTOR (0 ms Runtime-Overhead)
+		// // EINMALIGES PARSING FÜR EVENT-MODIFIER IM CONSTRUCTOR (0 ms Runtime-Overhead)
 		if (this.name.startsWith('@')) {
 			const parts = this.name.slice(1).toLowerCase().split('.'); // '@click.prevent' -> ['click', 'prevent']
 			this.pureEventType = parts[0]; // 'click'
-			this.modifiers = parts.slice(1); // ['prevent'] (oder ein leeres Array [])
+			//this.modifiers = parts.slice(1); // ['prevent'] (oder ein leeres Array [])
 		}
 	}
 
@@ -109,22 +168,93 @@ export class AttributePart {
 		}
 
 		// GLOBALE EVENT-DELEGATION MIT HOCHPERFORMANTEN MODIFIER-PAKETEN
-		if (this.name.startsWith('@') && typeof newValue === 'function') {
-			// 1. Nutze den im Constructor vorbereiteten reinen Event-Namen (z.B. 'click')
-			ensureGlobalDelegation(this.pureEventType);
+	if (this.name.startsWith('@') && typeof newValue === 'function') {
+		const eventTypeMatch = this.name.match(/@([a-zA-Z]+)/);
+		if (!eventTypeMatch) return;
 
-			// 2. Speicher die Funktion UND die Modifier als Paket direkt auf dem Element
-			if (!this.element[DELEGATED_STORAGE]) {
-				this.element[DELEGATED_STORAGE] = {};
+		const pureEventType = eventTypeMatch[1].toLowerCase();
+
+		const argsMatch = this.name.match(/\(([^)]+)\)/);
+		const pureArgs = argsMatch
+			? argsMatch[1].split(',').map(arg => arg.trim())
+			: [];
+
+		const hasPrevent =
+			this.name.includes('.prevent') || this.modifiers?.prevent;
+
+		// 1. Speicher auf dem Element initialisieren, falls noch nicht geschehen
+		if (!this.element[DELEGATED_STORAGE]) {
+			this.element[DELEGATED_STORAGE] = {};
+		}
+
+		// 2. PRÜFUNG: Haben wir diese exakte Direktive für dieses Element schon registriert?
+		const isAlreadyRegistered =
+			!!this.element[DELEGATED_STORAGE][this.name];
+
+		// 3. Callback im Speicher aktualisieren (damit Closures/neue Daten aus dem Render funktionieren)
+		this.element[DELEGATED_STORAGE][this.name] = {
+			eventType: pureEventType,
+			callback: newValue,
+			modifiers: this.modifiers,
+			args: pureArgs,
+		};
+
+		// WEG 1: Wenn .prevent aktiv ist -> Als EIN lokaler Kombi-Handler ausführen
+		if (hasPrevent) {
+			// NUR REGISTRIEREN, WENN ES NOCH NICHT EXISTIERT!
+			if (!isAlreadyRegistered) {
+				this.element.addEventListener(
+					pureEventType,
+					event => {
+						// WICHTIG: Wir holen uns die Konfiguration DYNAMISCH bei jedem Event-Trigger aus dem Speicher.
+						// Dadurch altert der Callback nicht (kein Stale-Closure-Problem).
+						const currentConfig =
+							this.element[DELEGATED_STORAGE][this.name];
+						if (
+							!currentConfig ||
+							typeof currentConfig.callback !== 'function'
+						)
+							return;
+
+						const { callback, args } = currentConfig;
+
+						if (pureEventType === 'keydown' && args.length > 0) {
+							const pressedKey = event.key.toLowerCase();
+
+							if (
+								args
+									.map(k => k.toLowerCase())
+									.includes(pressedKey)
+							) {
+								event.preventDefault();
+								callback(event, this.element, args);
+							}
+						} else {
+							event.preventDefault();
+							callback(event, this.element, args);
+						}
+					},
+					{ passive: false }
+				);
 			}
 
-			// Wir legen ein Konfigurations-Objekt ab, das deine globale Schleife ausliest
-			this.element[DELEGATED_STORAGE][this.pureEventType] = {
-				callback: newValue,
-				modifiers: this.modifiers,
-			};
 			return;
 		}
+
+		// WEG 2: Für alle normalen Events ohne .prevent -> Weiterhin globale Delegation
+		// Da wir oben isAlreadyRegistered prüfen, müssen wir hier nicht doppelt delegieren
+		if (!isAlreadyRegistered) {
+			ensureGlobalDelegation(pureEventType);
+		}
+
+		return;
+	}
+
+
+
+
+
+
 
 		// AB HIER DEIN NORMALER CORE-CODE (Dirty-Check für Standard-Attribute)
 		if (this.lastValue === newValue) return;
@@ -139,8 +269,6 @@ export class AttributePart {
 	}
 }
 
-
-
 export class EventPart {
 	constructor(element, blueprintPart) {
 		this.element = element;
@@ -149,11 +277,15 @@ export class EventPart {
 	}
 	update(newListener) {
 		if (this.boundListener === newListener) return;
+		// switch to new instances fraQ
 		if (this.boundListener) {
-			this.element.removeEventListener(this.name, this.boundListener);
-		}
-		this.element.addEventListener(this.name, newListener);
-		this.boundListener = newListener;
+		 	this.element.removeEventListener(this.name, this.boundListener);
+		 }
+
+			this.element.addEventListener(this.name, newListener);
+
+			this.boundListener = newListener;
+
 	}
 }
 
@@ -190,24 +322,22 @@ export class NodePart {
 					this.marker.nextSibling
 				);
 			}
-// TODO here is sth broken, either renders twice or does not append
+			// TODO  does not handle if NOT in map
 			newValue.forEach((subTpl, idx) => {
 				if (!subTpl || subTpl.type !== 'TemplateResult') return;
-				let childMeta = this.renderedChildren[ idx ];
+				let childMeta = this.renderedChildren[idx];
 				const wrapper = document.createElement('div');
 				const domNode = wrapper.firstElementChild || wrapper;
 
 				if (!childMeta || childMeta.strings !== subTpl.strings) {
-
 					renderEngine(subTpl, wrapper);
-
 
 					this.endMarker.parentNode.insertBefore(
 						domNode,
 						this.endMarker
 					);
 					childMeta = { domNode, strings: subTpl.strings };
-					this.renderedChildren[ idx ] = childMeta;
+					this.renderedChildren[idx] = childMeta;
 				} else {
 					renderEngine(subTpl, childMeta.domNode);
 				}
@@ -388,7 +518,7 @@ function getTemplateBlueprint(strings) {
  * Handles Primitives, nested Templates, and Boolean Attributes.
  */
 function normalizeValue(value, isAttribute = false) {
-	console.log({ value });
+
 	// 1. Handle "Nothing" (null, undefined, false)
 	if (value === null || value === undefined || value === false) {
 		return isAttribute ? null : String(value);
@@ -398,19 +528,19 @@ function normalizeValue(value, isAttribute = false) {
 	if (value === true) {
 		return isAttribute ? '' : '';
 	}
-
+console.log(value)
 	// 3. Catch raw objects to prevent rendering "[object Object]"
-	if (
-		typeof value === 'object' &&
-		!Array.isArray(value) &&
-		value.type !== 'TemplateResult'
-	) {
-		console.warn(
-			'Framework Warning: Attempted to render raw object:',
-			value
-		);
-		return JSON.stringify(value);
-	}
+	// if (
+	// 	typeof value === 'object' &&
+	// 	!Array.isArray(value) &&
+	// 	value.type !== 'TemplateResult'
+	// ) {
+	// 	console.warn(
+	// 		'Framework Warning: Attempted to render raw object:',
+	// 		value
+	// 	);
+	// 	return JSON.stringify(value);
+	// }
 
 	// Pass through Strings, Numbers, Arrays, and TemplateResults
 	return value;
@@ -640,26 +770,7 @@ function makeDeepReactive(target, ownerComponent) {
 		},
 	});
 }
-// Der wiederverwendbare Lego-Stein in deiner Library
-export function listenGlobal(eventType, callback) {
-	return (element) => {
-		// Wir hängen einen einzigen Listener an das Dokument (oder deine App-Wurzel)
-		const handler = (event) => {
-			// Prüfen, ob das geklickte Element (oder eines seiner Elternteile) unser Element ist
-			if (element.contains(event.target)) {
-				callback(event, element);
-			}
-		};
 
-		document.addEventListener(eventType, handler);
-
-		// HACK FÜR HEUTE (Solange du noch keine Core-Teardown-Engine hast):
-		// Wir nutzen ein unsichtbares, temporäres Attribut oder einen Marker auf dem Element,
-		// um den Listener zu entfernen, falls das Element jemals aus dem DOM fliegt.
-		// Alternativ speicherst du den Handler auf dem Element selbst:
-		element._cleanupGlobalEvent = () => document.removeEventListener(eventType, handler);
-	};
-}
 export function onKeyPress(targetKey, callback) {
 	return element => {
 		const handler = event => {
@@ -674,7 +785,6 @@ export function onKeyPress(targetKey, callback) {
 			window.removeEventListener('keydown', handler);
 	};
 }
-
 
 // 1. Die Directive-Funktion gibt eine Konfiguration zurück
 function autoScroll() {
@@ -713,8 +823,6 @@ function autoScrollToBottom() {
 	};
 }
 
-
-
 /**
  * The Factory Wrapper
  * @param {string} tagName - Der HTML-Tag-Name
@@ -743,8 +851,6 @@ createComponent(
 				profile: { name: 'John Doe', id: null },
 			};
 		}
-
-
 
 		shuffleData() {
 			// Array methods trigger updates perfectly through the Proxy layer
@@ -787,23 +893,14 @@ createComponent(
 			const newDate = new Date();
 
 			return html`
-				<form @submit.prevent="${(e, el) => this.sendData()}">
-					<!-- 1. .prevent: Verhindert das Neuladen der Seite -->
-					<input
-						type="text"
-						@keyup.enter="${() => this.addNewColor()}"
-					/>
-					<!-- 2. .enter: Reagiert NUR bei der Enter-Taste -->
-
-					<button @click.stop="${() => this.colors.pop()}">
-						Löschen
-					</button>
-					<!-- 3. .stop: Stoppt das Bubbling nach oben -->
-				</form>
-				<h2>
+				<h3 style="color: magenta">
 					User: ${this.user.profile.name} (ID:
 					${this.user.profile.id})
-				</h2>
+				</h3>
+				<!-- .prevent verhindert z.B. das Neuladen der Seite bei einem Formular -->
+				<form @submit.prevent="${(e) => this.addNewColor()}">
+					<button type="submit">Absenden</button>
+				</form>
 				<p>this.none?.existing?.prop: ${this.none?.existing?.prop}</p>
 				<p>new Date(): ${newDate}</p>
 				<button onclick="${() => this.addNewColor()}">Add Item</button>
@@ -813,6 +910,10 @@ createComponent(
 				</button>
 				<button onclick="${() => this.runInnerCalculations()}">
 					Set User
+				</button>
+				<!-- onfocus , but does not check for key what????-->
+				<button @keyDown(a)="${e => this.addNewColor()}">
+					Add Item 'a'
 				</button>
 				<button onclick="${() => this.simulateFetch()}">
 					Fetch User (1s,at [2])
@@ -850,18 +951,14 @@ createComponent(
 						style="height: 150px; max-height: 200px; background-color: gray; overflow-y: auto;  padding: 5px"
 						use="${autoScrollToBottom()}"
 					>
-						<ol>
-							${this.colors.map(
-								c => html`
-									<li
-										style="font-family: monospace; color: ${c}"
-									>
-										My color is ${c}, current user.ID:
-										${this.user.profile.id}
-									</li>
-								`
-							)}
-						</ol>
+						${this.colors.map(
+							c => html`
+								<li style="font-family: monospace; color: ${c}">
+									My color is ${c}, current user.ID:
+									${this.user.profile.id}
+								</li>
+							`
+						)}
 					</div>
 				</ul>
 			`;
@@ -869,10 +966,8 @@ createComponent(
 	}
 );
 
-
-
 //one.colors.pop();
-for (let i = 0; i < 500; i++) {
+for (let i = 0; i < 3; i++) {
 	const t = document.createElement('stresstest-component');
 	document.getElementById('app').appendChild(t);
 }

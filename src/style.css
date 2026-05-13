@@ -164,21 +164,22 @@ code {
 }
 
 #app {
-  width: 1126px;
+  width: 1500px;
   max-width: 100%;
   margin: 0 auto;
   text-align: center;
   border-inline: 1px solid var(--border);
   min-height: 100svh;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   box-sizing: border-box;
+  padding-top: 50px
 }
 
 #center {
   display: flex;
   flex-direction: column;
-  gap: 25px;
+
   place-content: center;
   place-items: center;
   flex-grow: 1;
@@ -307,5 +308,5 @@ code {
 }
 
 stresstest-component {
-  width: 50%;
+  width: 33%;
 }
