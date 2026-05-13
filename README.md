@@ -27,6 +27,16 @@ pnpm add quantz
 npm install quantz
 ```
 
+Usage in Vanilla JS without node modules:
+```bash
+import {
+     QElement,
+     createComponent,
+     html
+} from "https://unpkg.com/quantz@alpha/dist/index.js";
+// Optional
+import { autoScrollToBottom } from "https://unpkg.com/quantz@alpha/dist/plugins/scroll.js";
+```
 ---
 
 ## 🚀 Quick Start

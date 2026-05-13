@@ -6,5 +6,4 @@
 export { QElement } from './QuantzCore/element.js';
 export { createComponent, html } from './QuantzCore/factory.js';
 
-// Important: optional plugins not included her
-
+// Important: optional plugins not included here

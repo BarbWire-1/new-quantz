@@ -2,12 +2,12 @@
  *   Copyright (c) 2026
  *   All rights reserved.
  */
-// Configuration:
+// Directive hooks
 export function autoScroll() {
 	return {
 		isHook: true,
 		apply(element, lastValue) {
-		
+
 			queueMicrotask(() => {
 				element.scrollTop = element.scrollHeight;
 			});
