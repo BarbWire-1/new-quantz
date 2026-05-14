@@ -6,7 +6,7 @@
 import { reactiveRegistry } from './Globals.js';
 import { getTemplateBlueprint } from './TemplateBlueprint.js';
 import { NodePart, AttributePart, EventPart } from './partHandlers.js';
-import { normalizeValue } from '../../Utils/Normalize.js';
+import { normalizeValue } from '../Utils/Normalize.js';
 
 export function render(templateResult, container) {
 	if (!templateResult || templateResult.type !== 'TemplateResult') {
