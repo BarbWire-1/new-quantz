@@ -3,6 +3,11 @@
  *   All rights reserved.
  */
 
+/*
+ *   Copyright (c) 2026
+ *   All rights reserved.
+ */
+
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
@@ -15,11 +20,16 @@ export default defineConfig({
 		sourcemap: true,
 
 		lib: {
-			// FIX: Using an array forces separate, fully standalone builds
-			entry: [
-				resolve(__dirname, 'src/index.js'),
-				resolve(__dirname, 'src/plugins/scroll.js'),
-			],
+			// Only define API here
+			entry: {
+
+				element: resolve(__dirname, 'src/QuantzCore/element.js'),
+				events: resolve(__dirname, 'src/QuantzCore/events.js'),
+				factory: resolve(__dirname, 'src/QuantzCore/factory.js'),
+
+				index: resolve(__dirname, 'src/index.js'), // Exports main API
+				'plugins/scroll': resolve(__dirname, 'src/plugins/scroll.js'),
+			},
 			formats: ['es'],
 		},
 
@@ -45,14 +55,9 @@ export default defineConfig({
 
 		rollupOptions: {
 			output: {
-				// Re-establishes named mapping for array entries
-				entryFileNames: chunkInfo => {
-					return chunkInfo.name === 'index'
-						? 'index.js'
-						: 'plugins/scroll.js';
-				},
-				chunkFileNames: '[name].js',
-				assetFileNames: '[name].[ext]',
+				entryFileNames: '[name].js',
+				// prevent Code-Splitting for compatibility without build-tools (???)
+				manualChunks: () => 'shared-quantz-factory',
 			},
 		},
 	},
