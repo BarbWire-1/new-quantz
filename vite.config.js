@@ -22,7 +22,6 @@ export default defineConfig({
 		lib: {
 			// Only define API here
 			entry: {
-
 				element: resolve(__dirname, 'src/QuantzCore/element.js'),
 				events: resolve(__dirname, 'src/QuantzCore/events.js'),
 				factory: resolve(__dirname, 'src/QuantzCore/factory.js'),
@@ -56,7 +55,8 @@ export default defineConfig({
 			output: {
 				entryFileNames: '[name].js',
 				// prevent Code-Splitting for compatibility without build-tools (???)
-				manualChunks: () => 'shared-quantz-factory',
+				chunkFileNames: 'shared-utils.js',
+				manualChunks: () => 'shared-utils',
 			},
 		},
 	},
