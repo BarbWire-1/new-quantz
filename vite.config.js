@@ -17,7 +17,7 @@ export default defineConfig({
 		lib: {
 			// Only define API here
 			entry: {
-				index: resolve(__dirname, 'src/index.js'), // Exports main API
+				index: resolve(__dirname, 'src/index.js'), // Falls du eine Hauptdatei hast
 				'plugins/scroll': resolve(__dirname, 'src/plugins/scroll.js'),
 			},
 			formats: ['es'],
