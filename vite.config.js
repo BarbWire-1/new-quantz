@@ -12,13 +12,12 @@ export default defineConfig({
 	build: {
 		target: 'esnext',
 		minify: 'terser',
-		sourcemap: true ,
+		sourcemap: true,
 
 		lib: {
-			// Only define API here
 			entry: {
-				index: resolve(__dirname, 'src/index.js'), // Falls du eine Hauptdatei hast
-				'plugins/scroll': resolve(__dirname, 'src/plugins/scroll.js'),
+				index: resolve(__dirname, 'src/index.js'), // Combines core APIs
+				'plugins/scroll': resolve(__dirname, 'src/plugins/scroll.js'), // Separate plugin
 			},
 			formats: ['es'],
 		},
@@ -46,8 +45,9 @@ export default defineConfig({
 		rollupOptions: {
 			output: {
 				entryFileNames: '[name].js',
-				// prevent Code-Splitting for compatibility without build-tools (???)
-				manualChunks: () => 'shared-utils',
+				// FIX: Completely disable code splitting so files are standalone
+				inlineDynamicImports: false,
+				manualChunks: undefined,
 			},
 		},
 	},
