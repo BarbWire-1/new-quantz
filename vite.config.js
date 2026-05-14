@@ -15,10 +15,11 @@ export default defineConfig({
 		sourcemap: true,
 
 		lib: {
-			entry: {
-				index: resolve(__dirname, 'src/index.js'), // Combines core APIs
-				'plugins/scroll': resolve(__dirname, 'src/plugins/scroll.js'), // Separate plugin
-			},
+			// FIX: Using an array forces separate, fully standalone builds
+			entry: [
+				resolve(__dirname, 'src/index.js'),
+				resolve(__dirname, 'src/plugins/scroll.js'),
+			],
 			formats: ['es'],
 		},
 
@@ -44,10 +45,14 @@ export default defineConfig({
 
 		rollupOptions: {
 			output: {
-				entryFileNames: '[name].js',
-				// FIX: Completely disable code splitting so files are standalone
-				inlineDynamicImports: false,
-				manualChunks: undefined,
+				// Re-establishes named mapping for array entries
+				entryFileNames: chunkInfo => {
+					return chunkInfo.name === 'index'
+						? 'index.js'
+						: 'plugins/scroll.js';
+				},
+				chunkFileNames: '[name].js',
+				assetFileNames: '[name].[ext]',
 			},
 		},
 	},
