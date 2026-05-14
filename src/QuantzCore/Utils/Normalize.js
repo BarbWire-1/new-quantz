@@ -9,22 +9,13 @@
  */
 export function normalizeValue(value, isAttribute = false, seen = new Set()) {
 
-	// Functions should not be rendered to DOM
-	if (typeof value === 'function') {
-		if (process.env.NODE_ENV === 'development') {
-			console.warn(
-				'Framework Warning: Attempted to render function:',
-				value.name || 'anonymous'
-			);
-		}
-		return isAttribute ? null : '[Function]';
-	}
+	// Functions are never rendered, but executed if not explicitly stringified, which is intended!!
 
-	//To render null/undefined -should really I do that???? Why does it break if removed?
+	if (typeof value === 'string') return value;
+	//TODO should I pass as text? could break access to bool
 	if (value === null || value === undefined) {
-		return isAttribute ? null : String(value);
+		return value;
 	}
-
 
 	if (
 		typeof value === 'number' &&
@@ -76,7 +67,6 @@ export function normalizeValue(value, isAttribute = false, seen = new Set()) {
 		try {
 			const jsonString = JSON.stringify(value, (key, val) => {
 				if (typeof val === 'object' && val !== null) {
-
 					if (key !== '' && seen.has(val)) return '[Circular]';
 				}
 				return val;
@@ -89,6 +79,10 @@ export function normalizeValue(value, isAttribute = false, seen = new Set()) {
 		}
 	}
 
-	// Strings, Symbols, BigInts etc.
+	// Strings pass through; Symbols and BigInts need explicit conversion to avoid
+	// TypeError on implicit string coercion in template concatenation
+	if (typeof value === 'symbol' || typeof value === 'bigint') {
+		return String(value);
+	}
 	return value;
 }
