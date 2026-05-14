@@ -1,6 +1,6 @@
 {
   "name": "quantz",
-  "version": "0.0.1-alpha.51",
+  "version": "0.0.1-alpha.52",
   "description": "An ultra-lightweight reactive template engine for native Web Components with global event delegation. Built close to the DOM with optional plugins for a rich, intuitive DX experience.",
   "keywords": [
     "web-component",
@@ -14,6 +14,7 @@
     "scalable"
   ],
   "author": "BarbWire-1 aka Barbara Kälin",
+  "license": "MIT",
   "private": false,
   "type": "module",
   "files": [
@@ -47,4 +48,5 @@
     "url": "https://github.com/BarbWire-1/new-quantz"
   },
   "homepage": "https://github.com/BarbWire-1/new-quantz"
+
 }
