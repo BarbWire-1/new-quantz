@@ -25,6 +25,8 @@
   "module": "./dist/index.js",
   "exports": {
     ".": "./dist/index.js",
+    "./element": "./dist/element.js",
+    "./factory": "./dist/factory.js",
     "./plugins/scroll": "./dist/plugins/scroll.js"
   },
   "scripts": {
