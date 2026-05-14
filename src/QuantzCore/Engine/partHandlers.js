@@ -6,10 +6,7 @@
 import { DELEGATED_STORAGE, activeGlobalEvents } from './Globals.js';
 import { ensureGlobalDelegation } from '../events.js';
 
-/**
- * Normalizes values before they hit the DOM.
- * Handles Primitives, nested Templates, and Boolean Attributes.
- */
+
 
 export class AttributePart {
 	constructor(element, blueprintPart) {
@@ -75,7 +72,6 @@ export class AttributePart {
 				modifiers: this.modifiers,
 				args: pureArgs,
 			};
-
 
 			if (hasPrevent) {
 				// register ONCE on el
@@ -179,9 +175,7 @@ export class NodePart {
 			}
 			renderEngine(newValue, this.subContainer);
 		}
-		// TODO check for map, else is just an array ;)
-		// fine-grained array-handling (.map Loops)
-		// fine-grained array-handling (.map Loops und reine Arrays)
+
 		// fine-grained array-handling (.map Loops und reine Arrays)
 		else if (Array.isArray(newValue)) {
 			if (!this.endMarker) {
@@ -194,12 +188,12 @@ export class NodePart {
 
 			if (!this.renderedChildren) this.renderedChildren = [];
 
-			// 1. CHECK: Ist es ein primitives Array (z.B. Strings/Numbers)?
+			// Precheck array usage (value or list-render)
 			const isPrimitiveArray =
 				newValue.length > 0 &&
 				!newValue.some(item => item && item.type === 'TemplateResult');
 
-			// Klammern-Knoten für primitive Arrays verwalten (optional, falls gewünscht)
+			// To render primitive Arrays, maybe add in mormalize.js
 			if (isPrimitiveArray) {
 				if (!this.bracketStartNode) {
 					this.bracketStartNode = document.createTextNode('[');
@@ -213,26 +207,20 @@ export class NodePart {
 						this.endMarker
 					);
 				}
-			} else {
-				// Falls das Array vorher primitiv war und jetzt Templates enthält -> Klammern löschen
-				if (this.bracketStartNode) {
-					this.bracketStartNode.remove();
-					this.bracketStartNode = null;
-				}
-				if (this.bracketEndNode) {
-					this.bracketEndNode.remove();
-					this.bracketEndNode = null;
-				}
 			}
 
-			// Wir nutzen einen flachen Index, da wir für Kommas zusätzliche Nodes einfügen
+			// flat index to add commata if rendering array as array
 			let domIndex = 0;
 
 			newValue.forEach((item, idx) => {
-				// --- FALL A: TemplateResult (.map Loops) ---
+				// --- CASE A: TemplateResult (.map Loops) ---
 				if (item && item.type === 'TemplateResult') {
-					let childMeta = this.renderedChildren[domIndex];
-					const wrapper = document.createElement('div');
+					let childMeta = this.renderedChildren[ domIndex ];
+					// NOTE - wrappers needed for structural logic in renderer, own tag to keep it as light as possible
+					// set to display: contents to NOT influence css behaviour of children
+				const wrapper = document.createElement('q-p');
+
+					wrapper.style.display = 'contents';
 					const domNode = wrapper.firstElementChild || wrapper;
 
 					if (
@@ -260,9 +248,9 @@ export class NodePart {
 					}
 					domIndex++;
 				}
-				// --- FALL B: Primitives Array (inklusive automatischer Kommas) ---
+				// --- CASE B: Primitives Array (incl commas) ---
 				else {
-					// 1. Wert-Knoten rendern
+					// render value
 					let childMeta = this.renderedChildren[domIndex];
 					const textString = String(
 						item === undefined || item === null ? '' : item
@@ -273,7 +261,7 @@ export class NodePart {
 							childMeta.domNode.remove();
 						const textNode = document.createTextNode(textString);
 
-						// Vor dem End-Klammer-Knoten einfügen, falls vorhanden
+						// insert before closing bracket
 						const targetLocation =
 							this.bracketEndNode || this.endMarker;
 						targetLocation.parentNode.insertBefore(
@@ -293,7 +281,7 @@ export class NodePart {
 					}
 					domIndex++;
 
-					// 2. Komma-Knoten rendern (nur wenn es nicht das letzte Element ist)
+					// Render comma if not last el
 					if (idx < newValue.length - 1) {
 						let commaMeta = this.renderedChildren[domIndex];
 						if (!commaMeta || commaMeta.type !== 'comma') {
@@ -316,7 +304,8 @@ export class NodePart {
 				}
 			});
 
-			// Überflüssige Elemente am Ende (auch alte Kommas) sauber wegräumen
+			// Cleanup on array.length < prev
+			// Keep brackets for length 0
 			while (this.renderedChildren.length > domIndex) {
 				const removed = this.renderedChildren.pop();
 				if (removed && removed.domNode) {
@@ -324,13 +313,6 @@ export class NodePart {
 				}
 			}
 
-			// Falls das Array komplett leer geräumt wurde, auch Klammern löschen
-			if (newValue.length === 0 && this.bracketStartNode) {
-				this.bracketStartNode.remove();
-				this.bracketStartNode = null;
-				this.bracketEndNode.remove();
-				this.bracketEndNode = null;
-			}
 		}
 
 		// primitives

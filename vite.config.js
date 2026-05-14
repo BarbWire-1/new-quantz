@@ -15,12 +15,9 @@ export default defineConfig({
 		sourcemap: true ,
 
 		lib: {
-			// Nur die öffentlichen Schnittstellen definieren
+			// Only define API here
 			entry: {
-				index: resolve(__dirname, 'src/index.js'), // Falls du eine Hauptdatei hast
-				element: resolve(__dirname, 'src/QuantzCore/element.js'),
-				events: resolve(__dirname, 'src/QuantzCore/events.js'),
-				factory: resolve(__dirname, 'src/QuantzCore/factory.js'),
+				index: resolve(__dirname, 'src/index.js'), // Exports main API
 				'plugins/scroll': resolve(__dirname, 'src/plugins/scroll.js'),
 			},
 			formats: ['es'],
@@ -49,7 +46,7 @@ export default defineConfig({
 		rollupOptions: {
 			output: {
 				entryFileNames: '[name].js',
-				// Verhindert Code-Splitting in den /chunks Ordner für maximale Kompatibilität ohne Build-Tools
+				// prevent Code-Splitting for compatibility without build-tools (???)
 				manualChunks: () => 'shared-utils',
 			},
 		},

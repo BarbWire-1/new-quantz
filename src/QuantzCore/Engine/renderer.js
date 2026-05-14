@@ -56,9 +56,9 @@ export function render(templateResult, container) {
 		const part = instanceParts[i];
 		const rawValue = templateResult.values[i];
 
-		// Kontext-sensitive Normalisierung basierend auf dem Part-Typ:
-		// AttributeParts brauchen isAttribute = true, NodeParts (Text) brauchen false.
-		// EventParts brauchen keine Normalisierung (da es Funktionen sind).
+		// Context-sensitive normalization based on part type:
+		// AttributeParts need isAttribute = true, NodeParts (text) need false.
+		// EventParts don't need normalization (since they are functions).
 		let normalizedValue = rawValue;
 		if (part instanceof AttributePart) {
 			normalizedValue = normalizeValue(rawValue, true);

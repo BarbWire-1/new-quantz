@@ -79,14 +79,13 @@ export class QElement extends HTMLElement {
 			});
 		});
 	}
-
+	// ONLY render after all queued values are updated
 	__queueUpdate() {
 		if (this.#updateQueued) return;
 		this.#updateQueued = true;
 
 		queueMicrotask(() => {
-			// Wichtig: Erst rendern, DANN den Flag zurücksetzen.
-			// Das verhindert, dass während des Render-Vorgangs (z.B. durch Getters) voreilig neue Tasks geplant werden.
+		
 			try {
 				if (this.template) {
 					render(this.template(), this.shadowRoot);

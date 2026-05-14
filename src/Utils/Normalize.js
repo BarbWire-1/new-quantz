@@ -2,6 +2,12 @@
  *   Copyright (c) 2026
  *   All rights reserved.
  */
+
+
+/**
+ * Normalizes values before they hit the DOM.
+ * Handles Primitives, nested Templates, and Boolean Attributes.
+ */
 export function normalizeValue(value, isAttribute = false, seen = new Set()) {
 	// 1. Spezialwerte & Primitiven abfangen (null, undefined, NaN, Infinity, Booleans)
 	if (value === null || value === undefined) {
@@ -35,18 +41,24 @@ export function normalizeValue(value, isAttribute = false, seen = new Set()) {
 
 		// Arrays normalisieren (Elemente rekursiv bereinigen)
 		if (Array.isArray(value)) {
-			const normalizedArray = value.map(item =>
-				normalizeValue(item, isAttribute, seen)
-			);
-			seen.delete(value); // Cleanup nach Verlassen des Pfads
-			return normalizedArray;
+			try {
+				const normalizedArray = value.map(item =>
+					normalizeValue(item, isAttribute, seen)
+				);
+				seen.delete(value); // Cleanup nach Verlassen des Pfads
+				return normalizedArray;
+			} finally {
+				seen.delete(value); // Cleanup nach Verlassen des Pfads
+			}
 		}
 
 		// Rohe Objekte abfangen, um [object Object] im HTML zu verhindern
-		console.warn(
-			'Framework Warning: Attempted to render raw object:',
-			value
-		);
+		if (process.env.NODE_ENV === 'development') {
+			console.warn(
+				'Framework Warning: Attempted to render raw object:',
+				value
+			);
+		}
 
 		// Sicheres Stringify unter Verwendung unseres bestehenden "seen"-Sets
 		try {

@@ -4,34 +4,26 @@
  */
 import { reactiveRegistry } from './Globals.js';
 
-
-
 // Deep proxy wrapper for nested structures and array methods
-// TODO add Map, Set - try to use one proxy for handling all instances systemwide
-// downside: would retun proxy-objects and might be tricky in this context as no depsGraph
-
-
 export function makeDeepReactive(target, ownerComponent) {
-	// 1. Bereits verarbeitete Proxies direkt zurückgeben
+	// Reuse proxies
 	if (target && target.__isProxy) return target;
 
-	// 2. Nur komplexe Objekte/Collections verpacken
+	// ONLY wrap complex objects
 	if (target === null || typeof target !== 'object') return target;
 
 	reactiveRegistry.set(target, ownerComponent);
 
 	return new Proxy(target, {
 		get(obj, prop, receiver) {
-
-			
 			if (prop === '__isProxy') return true;
 
-			// --- SPEZIALFALL: MAP & SET INSTANZEN ---
+			// --- MAP & SET - INSTANCES ---
 			if (obj instanceof Map || obj instanceof Set) {
 				const val = obj[prop];
 
 				if (typeof val === 'function') {
-					// Mutierende Methoden für Map & Set definieren
+					// Define mutating methods for Map/Set
 					const mapMutators = ['set', 'delete', 'clear'];
 					const setMutators = ['add', 'delete', 'clear'];
 					const isMutator =
@@ -39,14 +31,37 @@ export function makeDeepReactive(target, ownerComponent) {
 						setMutators.includes(prop);
 
 					return function (...args) {
-						// Wichtig: Argumente für tiefere Reaktivität ebenfalls proxyfizieren
-						const processedArgs = args.map(arg =>
-							arg !== null && typeof arg === 'object'
-								? makeDeepReactive(arg, ownerComponent)
-								: arg
-						);
+						// IMPORTANT: Recurse on inner props
+						let processedArgs = args;
 
-						// Ausführen auf dem ORIGINALEN Objekt (behebt Slot-Inkompatibilität)
+						if (
+							obj instanceof Map &&
+							prop === 'set' &&
+							args.length >= 2
+						) {
+							// Map.set(key, value) -> only proxy value to preserve key identity!
+							const value = args[1];
+							processedArgs = [
+								args[0],
+								value !== null && typeof value === 'object'
+									? makeDeepReactive(value, ownerComponent)
+									: value,
+							];
+						} else if (
+							obj instanceof Set &&
+							prop === 'add' &&
+							args.length >= 1
+						) {
+							// Set.add(value) -> only proxy value to keep ref!
+							const value = args[0];
+							processedArgs = [
+								value !== null && typeof value === 'object'
+									? makeDeepReactive(value, ownerComponent)
+									: value,
+							];
+						}
+
+						// Resolve on ORIGINAL object!
 						const result = val.apply(obj, processedArgs);
 
 						if (isMutator) {
@@ -54,21 +69,21 @@ export function makeDeepReactive(target, ownerComponent) {
 							if (owner) owner.__queueUpdate();
 						}
 
-						// Wenn z.B. map.get(key) ein Objekt liefert, dieses reaktiv zurückgeben
+						// Recurse proxying over returned value
 						return result !== null && typeof result === 'object'
 							? makeDeepReactive(result, ownerComponent)
 							: result;
 					};
 				}
 
-				// Löst das Problem mit dem Zugriff auf .size
+				// Bind Type methods
 				return typeof val === 'function' ? val.bind(obj) : val;
 			}
 
-			// --- STANDARD: ARRAYS & OBJEKTE ---
+			// --- STANDARD: ARRAYS & OBJECTS ---
 			const val = Reflect.get(obj, prop, receiver);
 
-			// Array-Mutationsmethoden abfangen
+			// Intercept array mutation methods
 			if (Array.isArray(obj) && typeof val === 'function') {
 				const mutatingMethods = [
 					'push',
@@ -89,7 +104,7 @@ export function makeDeepReactive(target, ownerComponent) {
 				}
 			}
 
-			// Tiefen-Reaktivität für geschachtelte Objekte/Arrays
+			// Deep nested Objects/Arrays
 			if (val !== null && typeof val === 'object') {
 				return makeDeepReactive(val, ownerComponent);
 			}
@@ -97,7 +112,7 @@ export function makeDeepReactive(target, ownerComponent) {
 		},
 
 		set(obj, prop, value, receiver) {
-			// Map und Set nutzen keine Zuweisungen per "=", daher greift das hier nur für Standardobjekte/Arrays
+			// For =-assigned values (standard objects/arrays)
 			if (Reflect.get(obj, prop, receiver) === value) return true;
 
 			const safeValue =

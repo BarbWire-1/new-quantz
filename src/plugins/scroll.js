@@ -23,7 +23,7 @@ export function autoScrollToBottom() {
 
 		apply(element, lastValue) {
 
-			// check position, 1opx margin
+			// check position, 10px padding
 			this.wasAtBottom =
 				element.scrollHeight - element.clientHeight <=
 				element.scrollTop + 10;
