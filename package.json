@@ -1,9 +1,18 @@
 {
   "name": "quantz",
-  "version": "0.0.1-alpha.33",
+  "version": "0.0.1-alpha.34",
   "description": "An ultra-lightweight reactive template engine for native Web Components with global event delegation. Built close to the DOM with optional plugins for a rich, intuitive DX experience.",
-  "keywords": ["web-component", "template-engine", "reactive", "event-delegation", "lightweight", "fast", "dependency-free", "DX-plugins", "scalable"]
-,
+  "keywords": [
+    "web-component",
+    "template-engine",
+    "reactive",
+    "event-delegation",
+    "lightweight",
+    "fast",
+    "dependency-free",
+    "DX-plugins",
+    "scalable"
+  ],
   "author": "BarbWire-1 aka Barbara Kälin",
   "private": false,
   "type": "module",
@@ -16,7 +25,6 @@
   "module": "./dist/index.js",
   "exports": {
     ".": "./dist/index.js",
-
     "./plugins/scroll": "./dist/plugins/scroll.js"
   },
   "scripts": {
