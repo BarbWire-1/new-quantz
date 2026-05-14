@@ -12,7 +12,6 @@ export class QElement extends HTMLElement {
 
 	constructor() {
 		super();
-		// if already registered
 		try {
 			if (!this.shadowRoot) {
 				this.attachShadow({ mode: 'open' });
@@ -23,37 +22,52 @@ export class QElement extends HTMLElement {
 	}
 
 	connectedCallback() {
+		// WICHTIG: Die Komponente muss sich selbst in der Registry kennen
 		reactiveRegistry.set(this, this);
 
 		if (!this.shadowRoot) {
 			this.attachShadow({ mode: 'open' });
 		}
 
-		// handle props
+		// Erst Felder konvertieren, DANN das initiale Rendering triggern
 		this.__convertFieldsToReactive();
 		this.__queueUpdate();
 	}
-	// Keeps access to own Properties while proxy handles updates (target and frag)
+
 	__convertFieldsToReactive() {
 		Object.keys(this).forEach(key => {
 			if (key.startsWith('__') || key.startsWith('#')) return;
 			const initialValue = this[key];
 
+			// 1. Initialwert reaktiv machen
 			this.#valuesStore[key] =
 				initialValue !== null && typeof initialValue === 'object'
 					? makeDeepReactive(initialValue, this)
 					: initialValue;
 
+			// Falls der Initialwert ein Objekt war, registrieren wir dieses Objekt auf DIESE Komponente
+			if (initialValue !== null && typeof initialValue === 'object') {
+				reactiveRegistry.set(initialValue, this);
+			}
+
 			Object.defineProperty(this, key, {
 				get: () => this.#valuesStore[key],
 				set: newValue => {
-					if (this.#valuesStore[key] === newValue) return;
+					// 2. Proxy-Unwrapping beim Vergleich!
+					// Verhindert Endlosschleifen, falls newValue ein Proxy des bestehenden Werts ist
+					const currentValue = this.#valuesStore[key];
+					if (
+						currentValue === newValue ||
+						(currentValue && currentValue.__raw__ === newValue)
+					)
+						return;
 
 					if (newValue !== null && typeof newValue === 'object') {
 						this.#valuesStore[key] = makeDeepReactive(
 							newValue,
 							this
 						);
+						reactiveRegistry.set(newValue, this); // Registrierung erneuern
 					} else {
 						this.#valuesStore[key] = newValue;
 					}
@@ -71,10 +85,14 @@ export class QElement extends HTMLElement {
 		this.#updateQueued = true;
 
 		queueMicrotask(() => {
-			this.#updateQueued = false;
-			if (this.template) {
-				// does NOT rerender all template but replace bound nodes (frag) with clones of newValue
-				render(this.template(), this.shadowRoot);
+			// Wichtig: Erst rendern, DANN den Flag zurücksetzen.
+			// Das verhindert, dass während des Render-Vorgangs (z.B. durch Getters) voreilig neue Tasks geplant werden.
+			try {
+				if (this.template) {
+					render(this.template(), this.shadowRoot);
+				}
+			} finally {
+				this.#updateQueued = false;
 			}
 		});
 	}

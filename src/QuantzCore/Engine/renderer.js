@@ -6,6 +6,7 @@
 import { reactiveRegistry } from './Globals.js';
 import { getTemplateBlueprint } from './TemplateBlueprint.js';
 import { NodePart, AttributePart, EventPart } from './partHandlers.js';
+import { normalizeValue } from '../../Utils/Normalize.js';
 
 export function render(templateResult, container) {
 	if (!templateResult || templateResult.type !== 'TemplateResult') {
@@ -52,6 +53,19 @@ export function render(templateResult, container) {
 
 	// RUNTIME UPDATE:
 	for (let i = 0; i < instanceParts.length; i++) {
-		instanceParts[i].update(templateResult.values[i], render);
+		const part = instanceParts[i];
+		const rawValue = templateResult.values[i];
+
+		// Kontext-sensitive Normalisierung basierend auf dem Part-Typ:
+		// AttributeParts brauchen isAttribute = true, NodeParts (Text) brauchen false.
+		// EventParts brauchen keine Normalisierung (da es Funktionen sind).
+		let normalizedValue = rawValue;
+		if (part instanceof AttributePart) {
+			normalizedValue = normalizeValue(rawValue, true);
+		} else if (part instanceof NodePart) {
+			normalizedValue = normalizeValue(rawValue, false);
+		}
+
+		part.update(normalizedValue, render);
 	}
 }

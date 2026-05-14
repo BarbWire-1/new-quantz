@@ -181,6 +181,8 @@ export class NodePart {
 		}
 		// TODO check for map, else is just an array ;)
 		// fine-grained array-handling (.map Loops)
+		// fine-grained array-handling (.map Loops und reine Arrays)
+		// fine-grained array-handling (.map Loops und reine Arrays)
 		else if (Array.isArray(newValue)) {
 			if (!this.endMarker) {
 				this.endMarker = document.createComment('end-loop');
@@ -190,31 +192,147 @@ export class NodePart {
 				);
 			}
 
-			newValue.forEach((subTpl, idx) => {
-				if (!subTpl || subTpl.type !== 'TemplateResult') return;
-				let childMeta = this.renderedChildren[idx];
-				const wrapper = document.createElement('div');
-				const domNode = wrapper.firstElementChild || wrapper;
+			if (!this.renderedChildren) this.renderedChildren = [];
 
-				if (!childMeta || childMeta.strings !== subTpl.strings) {
-					renderEngine(subTpl, wrapper);
+			// 1. CHECK: Ist es ein primitives Array (z.B. Strings/Numbers)?
+			const isPrimitiveArray =
+				newValue.length > 0 &&
+				!newValue.some(item => item && item.type === 'TemplateResult');
 
+			// Klammern-Knoten für primitive Arrays verwalten (optional, falls gewünscht)
+			if (isPrimitiveArray) {
+				if (!this.bracketStartNode) {
+					this.bracketStartNode = document.createTextNode('[');
+					this.marker.parentNode.insertBefore(
+						this.bracketStartNode,
+						this.marker.nextSibling
+					);
+					this.bracketEndNode = document.createTextNode(']');
 					this.endMarker.parentNode.insertBefore(
-						domNode,
+						this.bracketEndNode,
 						this.endMarker
 					);
-					childMeta = { domNode, strings: subTpl.strings };
-					this.renderedChildren[idx] = childMeta;
-				} else {
-					renderEngine(subTpl, childMeta.domNode);
+				}
+			} else {
+				// Falls das Array vorher primitiv war und jetzt Templates enthält -> Klammern löschen
+				if (this.bracketStartNode) {
+					this.bracketStartNode.remove();
+					this.bracketStartNode = null;
+				}
+				if (this.bracketEndNode) {
+					this.bracketEndNode.remove();
+					this.bracketEndNode = null;
+				}
+			}
+
+			// Wir nutzen einen flachen Index, da wir für Kommas zusätzliche Nodes einfügen
+			let domIndex = 0;
+
+			newValue.forEach((item, idx) => {
+				// --- FALL A: TemplateResult (.map Loops) ---
+				if (item && item.type === 'TemplateResult') {
+					let childMeta = this.renderedChildren[domIndex];
+					const wrapper = document.createElement('div');
+					const domNode = wrapper.firstElementChild || wrapper;
+
+					if (
+						!childMeta ||
+						childMeta.type !== 'template' ||
+						childMeta.strings !== item.strings
+					) {
+						if (childMeta && childMeta.domNode)
+							childMeta.domNode.remove();
+
+						renderEngine(item, wrapper);
+						this.endMarker.parentNode.insertBefore(
+							domNode,
+							this.endMarker
+						);
+
+						childMeta = {
+							type: 'template',
+							domNode,
+							strings: item.strings,
+						};
+						this.renderedChildren[domIndex] = childMeta;
+					} else {
+						renderEngine(item, childMeta.domNode);
+					}
+					domIndex++;
+				}
+				// --- FALL B: Primitives Array (inklusive automatischer Kommas) ---
+				else {
+					// 1. Wert-Knoten rendern
+					let childMeta = this.renderedChildren[domIndex];
+					const textString = String(
+						item === undefined || item === null ? '' : item
+					);
+
+					if (!childMeta || childMeta.type !== 'text') {
+						if (childMeta && childMeta.domNode)
+							childMeta.domNode.remove();
+						const textNode = document.createTextNode(textString);
+
+						// Vor dem End-Klammer-Knoten einfügen, falls vorhanden
+						const targetLocation =
+							this.bracketEndNode || this.endMarker;
+						targetLocation.parentNode.insertBefore(
+							textNode,
+							targetLocation
+						);
+
+						childMeta = {
+							type: 'text',
+							domNode: textNode,
+							value: textString,
+						};
+						this.renderedChildren[domIndex] = childMeta;
+					} else if (childMeta.value !== textString) {
+						childMeta.domNode.textContent = textString;
+						childMeta.value = textString;
+					}
+					domIndex++;
+
+					// 2. Komma-Knoten rendern (nur wenn es nicht das letzte Element ist)
+					if (idx < newValue.length - 1) {
+						let commaMeta = this.renderedChildren[domIndex];
+						if (!commaMeta || commaMeta.type !== 'comma') {
+							if (commaMeta && commaMeta.domNode)
+								commaMeta.domNode.remove();
+							const commaNode = document.createTextNode(', ');
+
+							const targetLocation =
+								this.bracketEndNode || this.endMarker;
+							targetLocation.parentNode.insertBefore(
+								commaNode,
+								targetLocation
+							);
+
+							commaMeta = { type: 'comma', domNode: commaNode };
+							this.renderedChildren[domIndex] = commaMeta;
+						}
+						domIndex++;
+					}
 				}
 			});
 
-			while (this.renderedChildren.length > newValue.length) {
+			// Überflüssige Elemente am Ende (auch alte Kommas) sauber wegräumen
+			while (this.renderedChildren.length > domIndex) {
 				const removed = this.renderedChildren.pop();
-				if (removed && removed.domNode) removed.domNode.remove();
+				if (removed && removed.domNode) {
+					removed.domNode.remove();
+				}
+			}
+
+			// Falls das Array komplett leer geräumt wurde, auch Klammern löschen
+			if (newValue.length === 0 && this.bracketStartNode) {
+				this.bracketStartNode.remove();
+				this.bracketStartNode = null;
+				this.bracketEndNode.remove();
+				this.bracketEndNode = null;
 			}
 		}
+
 		// primitives
 		else {
 			const stringified = String(
