@@ -16,7 +16,7 @@ export function render(templateResult, container) {
 
 	const blueprint = getTemplateBlueprint(templateResult.strings);
 
-	// first instantiation: walk the passed html` code, get parts to set markes and bind
+	// first instantiation: walk the passed "html`" code, get parts to set markes and bind
 	if (!container.__rootInstance) {
 		const clone = blueprint.template.content.cloneNode(true);
 		const elementsMap = {};
@@ -64,6 +64,9 @@ export function render(templateResult, container) {
 			normalizedValue = normalizeValue(rawValue, true);
 		} else if (part instanceof NodePart) {
 			normalizedValue = normalizeValue(rawValue, false);
+		} else if (!(part instanceof EventPart)) {
+			// Warn if we encounter an unexpected part type
+			console.warn('Unexpected part type during normalization:', part.constructor.name);
 		}
 
 		part.update(normalizedValue, render);

@@ -3,16 +3,28 @@
  *   All rights reserved.
  */
 
-
 /**
  * Normalizes values before they hit the DOM.
  * Handles Primitives, nested Templates, and Boolean Attributes.
  */
 export function normalizeValue(value, isAttribute = false, seen = new Set()) {
-	// 1. Spezialwerte & Primitiven abfangen (null, undefined, NaN, Infinity, Booleans)
+
+	// Functions should not be rendered to DOM
+	if (typeof value === 'function') {
+		if (process.env.NODE_ENV === 'development') {
+			console.warn(
+				'Framework Warning: Attempted to render function:',
+				value.name || 'anonymous'
+			);
+		}
+		return isAttribute ? null : '[Function]';
+	}
+
+	//To render null/undefined -should really I do that???? Why does it break if removed?
 	if (value === null || value === undefined) {
 		return isAttribute ? null : String(value);
 	}
+
 
 	if (
 		typeof value === 'number' &&
@@ -20,39 +32,39 @@ export function normalizeValue(value, isAttribute = false, seen = new Set()) {
 	) {
 		return isAttribute ? null : String(value); // Renders "NaN", "Infinity", "-Infinity"
 	}
-
+	// TODO - check this - or better add a boolean prefix like ?attribute
 	if (typeof value === 'boolean') {
 		if (value === false) return isAttribute ? null : 'false';
-		if (value === true) return isAttribute ? '' : 'true'; // Leerer String für boolean Attributes (z.B. disabled="")
+		if (value === true) return isAttribute ? '' : 'true'; //boolean attr (e.G. disabled="")
 	}
 
-	// 2. Komplexe Objekte verarbeiten (Zirkelbezüge abfangen)
+	// Complex objects
 	if (typeof value === 'object') {
-		// Ausnahmen für deine Template-Engine direkt durchwinken
+		// pass inner complex to handling
 		if (value.type === 'TemplateResult') {
 			return value;
 		}
 
-		// ZYKLEN-CHECK: Haben wir dieses Objekt in diesem Render-Pfad schon gesehen?
+		// Cycle-check for self-referencing
 		if (seen.has(value)) {
 			return isAttribute ? '[Circular]' : '[Circular Reference]';
 		}
-		seen.add(value); // Objekt für diesen Pfad registrieren
+		seen.add(value); // register
 
-		// Arrays normalisieren (Elemente rekursiv bereinigen)
+		//Normalize arrays
 		if (Array.isArray(value)) {
 			try {
 				const normalizedArray = value.map(item =>
 					normalizeValue(item, isAttribute, seen)
 				);
-				seen.delete(value); // Cleanup nach Verlassen des Pfads
+
 				return normalizedArray;
 			} finally {
-				seen.delete(value); // Cleanup nach Verlassen des Pfads
+				seen.delete(value); // Cleanup
 			}
 		}
 
-		// Rohe Objekte abfangen, um [object Object] im HTML zu verhindern
+		// Do not render raw objects [object Object]
 		if (process.env.NODE_ENV === 'development') {
 			console.warn(
 				'Framework Warning: Attempted to render raw object:',
@@ -60,12 +72,11 @@ export function normalizeValue(value, isAttribute = false, seen = new Set()) {
 			);
 		}
 
-		// Sicheres Stringify unter Verwendung unseres bestehenden "seen"-Sets
+		// seen set to handle circular refs
 		try {
 			const jsonString = JSON.stringify(value, (key, val) => {
 				if (typeof val === 'object' && val !== null) {
-					// Da JSON.stringify einen eigenen Baum durchläuft,
-					// nutzen wir hier ein lokales Set nur für dieses eine JSON
+
 					if (key !== '' && seen.has(val)) return '[Circular]';
 				}
 				return val;
@@ -74,10 +85,10 @@ export function normalizeValue(value, isAttribute = false, seen = new Set()) {
 			return jsonString;
 		} catch (e) {
 			seen.delete(value); // Fallback-Cleanup
-			return '[Object (Circular)]';
+			return '[Object (Unserializable)]';
 		}
 	}
 
-	// Strings, Symbole, BigInts etc.
+	// Strings, Symbols, BigInts etc.
 	return value;
 }
