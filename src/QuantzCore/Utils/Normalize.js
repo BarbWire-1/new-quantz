@@ -56,12 +56,12 @@ export function normalizeValue(value, isAttribute = false, seen = new Set()) {
 		}
 
 		// Do not render raw objects [object Object]
-		if (process.env.NODE_ENV === 'development') {
-			console.warn(
-				'Framework Warning: Attempted to render raw object:',
-				value
-			);
-		}
+		// if (process?.env?.NODE_ENV === 'development') {
+		// 	console.warn(
+		// 		'Framework Warning: Attempted to render raw object:',
+		// 		value
+		// 	);
+		// }
 
 		// seen set to handle circular refs
 		try {
