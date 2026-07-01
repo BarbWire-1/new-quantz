@@ -20,14 +20,14 @@ let batchUpdateCount = 0;
 let isBatchScheduled = false;
 
 function flushMetrics() {
-	if (!PERF_LOG && !DEBUG) {
-		if (batchHydrateCount > 0) {
-			console.log(`[Hydrate] ${batchHydrateTime.toFixed(3)}ms (${batchHydrateCount} items)`);
-		}
-		if (batchUpdateCount > 0) {
-			console.log(`[Update] ${batchUpdateTime.toFixed(3)}ms (${batchUpdateCount} items)`);
-		}
-	}
+	// if (!PERF_LOG && !DEBUG) {
+	// 	if (batchHydrateCount > 0) {
+	// 		console.log(`[Hydrate] ${batchHydrateTime.toFixed(3)}ms (${batchHydrateCount} items)`);
+	// 	}
+	// 	if (batchUpdateCount > 0) {
+	// 		console.log(`[Update] ${batchUpdateTime.toFixed(3)}ms (${batchUpdateCount} items)`);
+	// 	}
+	// }
 	// Reset
 	batchHydrateTime = 0;
 	batchUpdateTime = 0;
@@ -56,7 +56,7 @@ function queueMetrics(type, duration) {
  * Erstellt Parts und injiziert die Initialwerte sofort in einem einzigen Durchlauf.
  */
 function hydrateContainer(templateResult, container, blueprint) {
-	const start = PERF_LOG ? performance.now() : 0;
+	//const start = PERF_LOG ? performance.now() : 0;
 
 	const clone = blueprint.template.content.cloneNode(true);
 	const elementsMap = {};
@@ -142,7 +142,7 @@ function updateContainer(templateResult, container) {
 	const updateTableData = [];
 	let hasAnyDirtyPart = false;
 	let dirtyCount = 0;
-console.log(container.__rootInstance);
+
 	for (let i = 0; i < instanceParts.length; i++) {
 		const part = instanceParts[i];
 		const rawValue = templateResult.values[i];
@@ -225,6 +225,7 @@ console.log(container.__rootInstance);
  * HAUPT-EINSTIEGSPUNKT
  */
 export function render(templateResult, container) {
+
 	const pureStart = performance.now();
 
 	if (!templateResult || templateResult.type !== 'TemplateResult') {
