@@ -15,11 +15,11 @@ import { stressComponent } from './stressCard.js';
 import { UserCard } from './userCard.js';
 
 
-const card = document.createElement('user-card')
- document.getElementById('app').appendChild(card);
+// const card = document.createElement('user-card')
+//  document.getElementById('app').appendChild(card);
 
 
- card.updateData(5)
+//  card.updateData(5)
 // setTimeout(() => {
 // 	card.users.reverse();
 // }, 5000);

@@ -6,7 +6,7 @@
 import { DELEGATED_STORAGE, activeGlobalEvents } from './Globals.js';
 import { ensureGlobalDelegation } from '../events.js';
 
-
+const DEBUG = false;
 
 export class AttributePart {
 	constructor(element, blueprintPart) {
@@ -26,7 +26,7 @@ export class AttributePart {
 	update(newValue) {
 		// use- namespace: use="{handlerName}" for predefined nice-to-have (directives)
 		if (this.name === 'use') {
-			this.element.removeAttribute('use');
+			//this.element.removeAttribute('use');
 
 			if (newValue && typeof newValue === 'object' && newValue.isHook) {
 				newValue.apply(this.element, this.lastValue);
@@ -156,7 +156,7 @@ export class EventPart {
  *   All rights reserved.
  */
 
-const DEBUG = true;
+
 
 export class NodePart {
 	constructor(markerComment) {

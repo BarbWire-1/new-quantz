@@ -64,7 +64,7 @@ obj = { num: 42, self: null };
 			const newDate = new Date();
 			const vis = () => {
 				console.log("RUNNING VIS" ,isNaN(this.obj.self?.self?.num))
-				isNaN(this.obj.self?.self?.num) ? 'hidden' : 'visible';
+				return isNaN(this.obj.self?.self?.num) ? 'hidden' : 'visible';
 			}
 			return html`
 
@@ -73,7 +73,7 @@ obj = { num: 42, self: null };
 					${this.user.profile.id})
 				</h3>
 				<p obj selfreference:>this.obj.self: ${this.obj.self}</p>
-					<p style="visibility: ${() => vis()}" obj selfreference:>this.obj.self?.self?.num: ${this.obj.self?.self?.num}</p>
+					<p style="visibility: ${vis()}"> obj selfreference:>this.obj.self?.self?.num: ${this.obj.self?.self?.num}</p>
 				<!-- .prevent verhindert z.B. das Neuladen der Seite bei einem Formular -->
 				<form @submit.prevent="${e => this.addNewColor()}">
 					<button type="submit">Absenden</button>
@@ -112,8 +112,8 @@ color: black;
 
 
 			 overflow-y: auto"
-			<!-- use=${autoScroll} -->
-
+			use=${autoScroll()}
+>
 				<p style="padding: 20px" >Array this.colors:${this.colors}</p>
 </div>
 				<p>this.color: ${this.color}</p>
@@ -133,7 +133,7 @@ color: black;
 					<div
 						id="out"
 						style="height: 150px; max-height: 200px; background-color: gray; overflow-y: auto;  padding: 5px"
-						use="${autoScrollToBottom}"
+						use="${autoScrollToBottom()}"
 					>
 						${this.colors.map(
 							c => html`
