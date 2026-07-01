@@ -155,7 +155,7 @@ color: black;
 );
 
 const createStressTest = () => {
-	for (let i = 0; i <1; i++) {
+	for (let i = 0; i <100; i++) {
 		const t = document.createElement('stresstest-component');
 		document.getElementById('app').appendChild(t);
 	}

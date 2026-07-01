@@ -9,7 +9,7 @@ import { NodePart, AttributePart, EventPart } from './partHandlers.js';
 import { normalizeValue } from '../Utils/Normalize.js';
 
 // 🎛️ LOG-KONTROLLZENTRUM
-const DEBUG = false; // Schaltet die detaillierten Tabellen & Gruppen an/aus
+const DEBUG = true; // Schaltet die detaillierten Tabellen & Gruppen an/aus
 const PERF_LOG = true; // Schaltet das hochpräzise Einzeilen-Performance-Log an/aus
 
 /**
@@ -56,7 +56,8 @@ function hydrateContainer(templateResult, container, blueprint) {
 		let normalizedValue = rawValue;
 
 		if (part instanceof AttributePart) {
-			normalizedValue = normalizeValue(rawValue, true);
+			// Wenn es "use" ist, NIEMALS normalisieren, sondern das rohe Hook-Objekt behalten!
+			normalizedValue = part.name === 'use' ? rawValue : normalizeValue(rawValue, true);
 		} else if (part instanceof NodePart) {
 			normalizedValue = normalizeValue(rawValue, false);
 		}
@@ -118,7 +119,8 @@ function updateContainer(templateResult, container) {
 
 		let normalizedValue = rawValue;
 		if (part instanceof AttributePart) {
-			normalizedValue = normalizeValue(rawValue, true);
+			// Wenn es "use" ist, NIEMALS normalisieren, sondern das rohe Hook-Objekt behalten!
+			normalizedValue = part.name === 'use' ? rawValue : normalizeValue(rawValue, true);
 		} else if (part instanceof NodePart) {
 			normalizedValue = normalizeValue(rawValue, false);
 		}
