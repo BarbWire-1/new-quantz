@@ -80,7 +80,7 @@ obj = { num: 42, self: null };
 				</form>
 				<p>this.none?.existing?.prop: ${this.none?.existing?.prop}</p>
 				<p>new Date(): ${newDate}</p>
-				<button onclick="${()=> this.addNewColor()}">Add Item</button>
+				<button onclick="${() =>this.addNewColor()}">Add Item</button>
 				<button onclick="${() => this.colors.pop()}">Pop Item</button>
 				<button onclick="${() => this.shuffleData()}">
 					Reverse Array
@@ -96,9 +96,9 @@ obj = { num: 42, self: null };
 					Fetch User (1s,at [2])
 				</button>
 				<h4>Global EventDelegation</h4>
-				<button @click="${()=>this.addNewColor()}">Add Item</button>
-				<button @click="${() => this.colors.pop()}">Pop Item</button>
-				<button @click="${ () => this.shuffleData()}">
+				<button @click="${this.addNewColor}">Add Item</button>
+				<button @click="${this.colors.pop}">Pop Item</button>
+				<button @click="${this.shuffleData}">
 					Reverse Array
 				</button>
 

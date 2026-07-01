@@ -151,6 +151,13 @@ export class EventPart {
 	}
 }
 // textNodes are lookedup for update by markerComments (seen at lit)
+/*
+ *   Copyright (c) 2026
+ *   All rights reserved.
+ */
+
+const DEBUG = true;
+
 export class NodePart {
 	constructor(markerComment) {
 		this.marker = markerComment;
@@ -160,11 +167,12 @@ export class NodePart {
 		this.endMarker = null;
 		this.renderedChildren = [];
 	}
+
 	update(newValue, renderEngine) {
 		if (this.lastValue === newValue) return;
 		this.lastValue = newValue;
 
-		//nested templates
+		// nested templates
 		if (newValue && newValue.type === 'TemplateResult') {
 			if (!this.subContainer) {
 				this.subContainer = document.createElement('span');
@@ -172,6 +180,12 @@ export class NodePart {
 					this.subContainer,
 					this.marker.nextSibling
 				);
+				if (DEBUG) {
+					console.log('%c[NodePart] 🧱 Created new sub-container span for nested TemplateResult', 'color: #00bcd4;');
+				}
+			}
+			if (DEBUG) {
+				console.log('%c[NodePart] 🔄 Updating nested TemplateResult', 'color: #00bcd4;', newValue);
 			}
 			renderEngine(newValue, this.subContainer);
 		}
@@ -188,12 +202,10 @@ export class NodePart {
 
 			if (!this.renderedChildren) this.renderedChildren = [];
 
-			// Precheck array usage (value or list-render)
 			const isPrimitiveArray =
 				newValue.length > 0 &&
 				!newValue.some(item => item && item.type === 'TemplateResult');
 
-			// To render primitive Arrays, maybe add in mormalize.js
 			if (isPrimitiveArray) {
 				if (!this.bracketStartNode) {
 					this.bracketStartNode = document.createTextNode('[');
@@ -209,17 +221,13 @@ export class NodePart {
 				}
 			}
 
-			// flat index to add commata if rendering array as array
 			let domIndex = 0;
 
 			newValue.forEach((item, idx) => {
 				// --- CASE A: TemplateResult (.map Loops) ---
 				if (item && item.type === 'TemplateResult') {
-					let childMeta = this.renderedChildren[ domIndex ];
-					// NOTE - wrappers needed for structural logic in renderer, own tag to keep it as light as possible
-					// set to display: contents to NOT influence css behaviour of children
-				const wrapper = document.createElement('q-p');
-
+					let childMeta = this.renderedChildren[domIndex];
+					const wrapper = document.createElement('q-p');
 					wrapper.style.display = 'contents';
 					const domNode = wrapper.firstElementChild || wrapper;
 
@@ -228,8 +236,16 @@ export class NodePart {
 						childMeta.type !== 'template' ||
 						childMeta.strings !== item.strings
 					) {
-						if (childMeta && childMeta.domNode)
+						if (childMeta && childMeta.domNode) {
+							if (DEBUG) {
+								console.log(`%c[NodePart: Loop] 🗑️ Structural change at index ${idx}. Removing old node.`, 'color: #e91e63;');
+							}
 							childMeta.domNode.remove();
+						}
+
+						if (DEBUG) {
+							console.log(`%c[NodePart: Loop] 🆕 Creating new instance for item at index ${idx}`, 'color: #2196f3;', item);
+						}
 
 						renderEngine(item, wrapper);
 						this.endMarker.parentNode.insertBefore(
@@ -244,26 +260,33 @@ export class NodePart {
 						};
 						this.renderedChildren[domIndex] = childMeta;
 					} else {
+						// ✨ HIER PASSIERT DAS RE-RENDER BEI VALUE-ÄNDERUNGEN
+						if (DEBUG) {
+							console.log(`%c[NodePart: Loop] 🔄 Updating existing item at index ${idx}`, 'color: #4caf50;', {
+								node: childMeta.domNode,
+								newValues: item.values
+							});
+						}
 						renderEngine(item, childMeta.domNode);
 					}
 					domIndex++;
 				}
 				// --- CASE B: Primitives Array (incl commas) ---
 				else {
-					// render value
 					let childMeta = this.renderedChildren[domIndex];
 					const textString = String(
 						item === undefined || item === null ? '' : item
 					);
 
 					if (!childMeta || childMeta.type !== 'text') {
-						if (childMeta && childMeta.domNode)
-							childMeta.domNode.remove();
+						if (childMeta && childMeta.domNode) childMeta.domNode.remove();
 						const textNode = document.createTextNode(textString);
 
-						// insert before closing bracket
-						const targetLocation =
-							this.bracketEndNode || this.endMarker;
+						if (DEBUG) {
+							console.log(`%c[NodePart: Array] 🆕 Appending primitive value text-node at index ${idx}: "${textString}"`, 'color: #ff9800;');
+						}
+
+						const targetLocation = this.bracketEndNode || this.endMarker;
 						targetLocation.parentNode.insertBefore(
 							textNode,
 							targetLocation
@@ -276,21 +299,21 @@ export class NodePart {
 						};
 						this.renderedChildren[domIndex] = childMeta;
 					} else if (childMeta.value !== textString) {
+						if (DEBUG) {
+							console.log(`%c[NodePart: Array] 📝 Updating primitive value text at index ${idx}: "${childMeta.value}" -> "${textString}"`, 'color: #ff9800;');
+						}
 						childMeta.domNode.textContent = textString;
 						childMeta.value = textString;
 					}
 					domIndex++;
 
-					// Render comma if not last el
 					if (idx < newValue.length - 1) {
 						let commaMeta = this.renderedChildren[domIndex];
 						if (!commaMeta || commaMeta.type !== 'comma') {
-							if (commaMeta && commaMeta.domNode)
-								commaMeta.domNode.remove();
+							if (commaMeta && commaMeta.domNode) commaMeta.domNode.remove();
 							const commaNode = document.createTextNode(', ');
 
-							const targetLocation =
-								this.bracketEndNode || this.endMarker;
+							const targetLocation = this.bracketEndNode || this.endMarker;
 							targetLocation.parentNode.insertBefore(
 								commaNode,
 								targetLocation
@@ -304,15 +327,15 @@ export class NodePart {
 				}
 			});
 
-			// Cleanup on array.length < prev
-			// Keep brackets for length 0
 			while (this.renderedChildren.length > domIndex) {
 				const removed = this.renderedChildren.pop();
 				if (removed && removed.domNode) {
+					if (DEBUG) {
+						console.log('%c[NodePart: Loop] 🗑️ Truncating array: removing trailing DOM node', 'color: #f44336;', removed.domNode);
+					}
 					removed.domNode.remove();
 				}
 			}
-
 		}
 
 		// primitives
@@ -321,15 +344,22 @@ export class NodePart {
 				newValue === undefined || newValue === null ? '' : newValue
 			);
 			if (!this.textNode) {
+				if (DEBUG) {
+					console.log(`%c[NodePart: Primitive] 🆕 Creating new text-node: "${stringified}"`, 'color: #9e9e9e;');
+				}
 				this.textNode = document.createTextNode(stringified);
 				this.marker.parentNode.insertBefore(
 					this.textNode,
 					this.marker.nextSibling
 				);
 			} else if (this.textNode.textContent !== stringified) {
+				if (DEBUG) {
+					console.log(`%c[NodePart: Primitive] 📝 Updating text content: "${this.textNode.textContent}" -> "${stringified}"`, 'color: #9e9e9e;');
+				}
 				this.textNode.textContent = stringified;
 			}
 		}
 	}
 }
+
 export default { NodePart, AttributePart, EventPart };

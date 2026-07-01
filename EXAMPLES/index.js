@@ -24,27 +24,27 @@ const card = document.createElement('user-card')
 // 	card.users.reverse();
 // }, 5000);
 
-// const createStressTest = () => {
-// 	for (let i = 0; i < 1; i++) {
-// 		const t = document.createElement('stresstest-component');
-// 		document.getElementById('app').appendChild(t);
-// 	}
-// 	const one = document.querySelector('stresstest-component');
-// 	// Dynamically alter system states after 2 seconds to prove full reactivity loop integrity
-// 	setTimeout(() => {
-// 		one.color = 'purple';
-// 		one.num = 100;
-// 		one.colors = [ 'orange', 'teal', 'darkblue' ];
-// 		one.blah = 'NÖ';
+const createStressTest = () => {
+	for (let i = 0; i < 1; i++) {
+		const t = document.createElement('stresstest-component');
+		document.getElementById('app').appendChild(t);
+	}
+	const one = document.querySelector('stresstest-component');
+	// Dynamically alter system states after 2 seconds to prove full reactivity loop integrity
+	setTimeout(() => {
+		one.color = 'purple';
+		one.num = 100;
+		one.colors = [ 'orange', 'teal', 'darkblue' ];
+		one.blah = 'NÖ';
 
 
 
-// 		one.obj.self = "value"
+		one.obj.self = "value"
 
-// 		one.obj.self = one.obj;
+		one.obj.self = one.obj;
 
 
 
-// 	}, 12000);
-// }
-// createStressTest()
+	}, 12000);
+}
+createStressTest()
