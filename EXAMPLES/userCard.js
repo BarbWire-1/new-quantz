@@ -84,22 +84,27 @@ export const UserCard = createComponent(
 					<header
 						style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px;"
 					>
-						<h2>
-							Quantz Performance Directory (${this.users.length}
-							Profiles)
-						</h2>
-						<div>
-							Total Mutations:
-							<strong>${this.totalInteractions}</strong>
-						</div>
+						<h2>Quantz Performance Directory (${this.users.length} Profiles)</h2>
+
+						<!-- 🎯 CONDITIONAL RENDERING TEST AUẞERHALB DER SCHLEIFE -->
+						<!-- Wechselt das komplette Markup im Header basierend auf der Interaktions-Anzahl -->
+						<div
+							if="${this.totalInteractions % 2 === 0
+								? html`<div style="background: #e8f5e9; padding: 5px 10px; border-radius: 4px;">
+										Mutations (Even):
+										<strong style="color: green;">${this.totalInteractions} 🟢</strong>
+									</div>`
+								: html`<div style="background: #e3f2fd; padding: 5px 10px; border-radius: 4px;">
+										Mutations (Odd):
+										<strong style="color: blue;">${this.totalInteractions} 🔵</strong>
+									</div>`}"
+						></div>
+
 						<h4>FUCKING STATIC PRIMITIVE TEXT</h4>
 					</header>
 					<!-- TODO NOT handling false for non text??? -->
 					<h3
-						style="color: #666; text-align: center; display: ${this
-							.loadingText === ''
-							? 'inline'
-							: 'none'}"
+						style="color: #666; text-align: center; display: ${this.loadingText === '' ? 'inline' : 'none'}"
 					>
 						${this.loadingText}
 					</h3>
@@ -108,19 +113,14 @@ export const UserCard = createComponent(
 						style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;"
 					>
 						${this.users.map(
-							(u,i) => html`
+							(u, i) => html`
 								<div
 									style="border: 1px solid #ccc; padding: 10px; border-radius: 6px; text-align: center; background: white;"
 								>
-									<image
-										style="border-radius: 50%"
-										src="${u.avatar}"
-									></image>
+									<image style="border-radius: 50%" src="${u.avatar}"></image>
 									<p><strong>${u.name}</strong></p>
 									<p><strong>${u.age}</strong></p>
-									<p style="font-size: 11px; color: crimson;">
-										Loop Verification ID: ${u.id}
-									</p>
+									<p style="font-size: 11px; color: crimson;">Loop Verification ID: ${u.id}</p>
 
 									<button
 										@click="${() => {
@@ -136,6 +136,7 @@ export const UserCard = createComponent(
 					</div>
 				</div>
 			`;
+
 		}
 	}
 );

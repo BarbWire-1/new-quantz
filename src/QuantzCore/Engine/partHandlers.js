@@ -5,6 +5,7 @@
 
 import { DELEGATED_STORAGE, activeGlobalEvents } from './Globals.js';
 import { ensureGlobalDelegation } from '../events.js';
+import { render } from './renderer.js';
 
 const DEBUG = false;
 
@@ -24,6 +25,52 @@ export class AttributePart {
 	}
 
 	update(newValue) {
+		// ==========================================
+		// 🔀 SPEZIALFALL: Conditional Rendering (if)
+		// ==========================================
+		if (this.name === 'if') {
+			// Falls der Wert ein TemplateResult ist (z. B. condition ? html`A` : html`B`)
+			if (newValue && newValue.type === 'TemplateResult') {
+
+				// 1. Initialisierung: Beim ersten Mal das originale Platzhalter-Element im DOM ersetzen
+				if (!this.anchor) {
+					this.anchor = document.createTextNode(''); // Unsichtbarer Anker im DOM
+					this.element.parentNode.insertBefore(this.anchor, this.element);
+					this.element.parentNode.removeChild(this.element); // Das "if"-Träger-Element entfernen
+				}
+
+				// 2. Struktureller Dirty-Check: Nur neu rendern, wenn sich das Template-Layout geändert hat
+				if (this.lastValue?.strings !== newValue.strings) {
+					// Alten Inhalt sauber aus dem DOM entfernen
+					this.activeNodes?.forEach(node => {
+						if (node.parentNode) node.parentNode.removeChild(node);
+					});
+					this.activeNodes = [];
+
+					// Neues Fragment rendern
+					const fragment = document.createDocumentFragment();
+					render(newValue, fragment);
+
+					// Neue Knoten vor dem Anker einfügen und tracken
+					const childNodes = Array.from(fragment.childNodes);
+					childNodes.forEach(node => this.anchor.parentNode.insertBefore(node, this.anchor));
+					this.activeNodes = childNodes;
+				}
+
+				this.lastValue = newValue;
+				return;
+			}
+
+			// Fallback: Wenn ein primitiver Boolean übergeben wird (z. B. if=${showHeadline})
+			// Hier steuerst du einfach die Sichtbarkeit des Elements selbst
+			if (!newValue) {
+				this.element.style.display = 'none';
+			} else {
+				this.element.style.removeProperty('display');
+			}
+			this.lastValue = newValue;
+			return;
+		}
 		// use- namespace: use="{handlerName}" for predefined nice-to-have (directives)
 		if (this.name === 'use') {
 			//this.element.removeAttribute('use');
