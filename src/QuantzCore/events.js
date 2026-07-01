@@ -4,7 +4,7 @@
  */
 import { activeGlobalEvents, DELEGATED_STORAGE, reactiveRegistry } from './Engine/Globals.js';
 
-const DEBUG = false;
+const DEBUG = true;
 
 export function ensureGlobalDelegation(eventType) {
 	if (activeGlobalEvents.has(eventType)) return;

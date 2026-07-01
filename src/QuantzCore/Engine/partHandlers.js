@@ -230,6 +230,11 @@ export class EventPart {
 
 
 // TODO THIS USING THE COMMENT IS A NIGHTMARE!!!!!!!!
+/*
+ *   Copyright (c) 2026
+ *   All rights reserved.
+ */
+
 export class NodePart {
 	constructor(markerComment) {
 		this.marker = markerComment;
@@ -237,14 +242,14 @@ export class NodePart {
 		this.textNode = null;
 		this.subContainer = null;
 		this.endMarker = null;
-		this.renderedChildren = [];
+		this.renderedChildren = []; // Trackt die Metadaten der Schleifen-Items
 	}
 
 	update(newValue, renderEngine) {
 		if (this.lastValue === newValue) return;
 		this.lastValue = newValue;
 
-		// nested templates
+		// --- 1. Verschachtelte Templates ---
 		if (newValue && newValue.type === 'TemplateResult') {
 			if (!this.subContainer) {
 				this.subContainer = document.createElement('span');
@@ -252,18 +257,12 @@ export class NodePart {
 					this.subContainer,
 					this.marker.nextSibling
 				);
-				if (DEBUG) {
-					console.log('%c[NodePart] 🧱 Created new sub-container span for nested TemplateResult', 'color: #00bcd4;');
-				}
-			}
-			if (DEBUG) {
-				console.log('%c[NodePart] 🔄 Updating nested TemplateResult', 'color: #00bcd4;', newValue);
 			}
 			renderEngine(newValue, this.subContainer);
 		}
 
-		// fine-grained array-handling (.map Loops und reine Arrays)
-				else if (Array.isArray(newValue)) {
+		// --- 2. Feingranulares Array-Handling (.map Loops & reine Arrays) ---
+		else if (Array.isArray(newValue)) {
 			if (!this.endMarker) {
 				this.endMarker = document.createComment('end-loop');
 				this.marker.parentNode.insertBefore(
@@ -282,103 +281,115 @@ export class NodePart {
 			if (isPrimitiveArray) {
 				const textString = newValue.toString();
 
-				// Wenn wir noch keinen TextNode haben, erstellen wir ihn vor dem endMarker
 				if (!this.textNode) {
 					this.textNode = document.createTextNode(textString);
 					this.endMarker.parentNode.insertBefore(this.textNode, this.endMarker);
 				}
-				// Wenn er existiert, machen wir einfach den direkten Dirty-Check auf dem DOM-Value
 				else if (this.textNode.textContent !== textString) {
 					this.textNode.textContent = textString;
 				}
 			}
-			// --- CASE A: TemplateResult (.map Loops) ---
+
+			// --- CASE A: TemplateResult Loops (.map) - RADIKAL WRAPPERLOS ---
 			else {
-				let domIndex = 0;
+				const isFirstRender = this.renderedChildren.length === 0;
 
-				newValue.forEach((item, idx) => {
-					if (item && item.type === 'TemplateResult') {
-						let childMeta = this.renderedChildren[domIndex];
-						const wrapper = document.createElement('q-p');
-						wrapper.style.display = 'contents';
-						const domNode = wrapper.firstElementChild || wrapper;
+				// 🚀 INITIALER RENDER-PFAD: Erstellt die Items wrapperlos
+				if (isFirstRender && newValue.length > 0) {
+					const fragment = document.createDocumentFragment();
 
-						if (
-							!childMeta ||
-							childMeta.type !== 'template' ||
-							childMeta.strings !== item.strings
-						) {
-							if (childMeta && childMeta.domNode) {
-								if (DEBUG) {
-									console.log(`%c[NodePart: Loop] 🗑️ Structural change at index ${idx}. Removing old node.`, 'color: #e91e63;');
-								}
-								childMeta.domNode.remove();
-							}
+					newValue.forEach((item, idx) => {
+						if (item && item.type === 'TemplateResult') {
+							// Ein DocumentFragment dient als reiner, tag-loser logischer Container
+							const itemFragment = document.createDocumentFragment();
 
-							if (DEBUG) {
-								console.log(`%c[NodePart: Loop] 🆕 Creating new instance for item at index ${idx}`, 'color: #2196f3;', item);
-							}
+							// Synchrones Hydrieren direkt in das Fragment (0% Struktur-Verfälschung)
+							renderEngine(item, itemFragment, { quiet: true });
 
-							renderEngine(item, wrapper);
-							this.endMarker.parentNode.insertBefore(
-								domNode,
-								this.endMarker
-							);
+							// Sichere alle echten Kindknoten (unterstützt ein oder mehrere Geschwister-Elemente!)
+							const childNodes = Array.from(itemFragment.childNodes);
 
-							childMeta = {
+							// Schiebe die nackten Nodes in das Hauptfragment für den DOM-Insert
+							childNodes.forEach(node => fragment.appendChild(node));
+
+							this.renderedChildren[idx] = {
 								type: 'template',
-								domNode,
+								domNodes: childNodes,       // Tracke ALLE nackten Nodes dieses Items für spätere Löschungen
+								wrapperContext: itemFragment, // Hält die __rootInstance mit den funktionstüchtigen Parts im RAM
 								strings: item.strings,
 							};
-							this.renderedChildren[domIndex] = childMeta;
-						} else {
-							if (DEBUG) {
-								console.log(`%c[NodePart: Loop] 🔄 Updating existing item at index ${idx}`, 'color: #4caf50;', {
-									node: childMeta.domNode,
-									newValues: item.values
-								});
-							}
-							renderEngine(item, childMeta.domNode);
 						}
-						domIndex++;
-					}
-				});
+					});
 
-				while (this.renderedChildren.length > domIndex) {
-					const removed = this.renderedChildren.pop();
-					if (removed && removed.domNode) {
-						if (DEBUG) {
-							console.log('%c[NodePart: Loop] 🗑️ Truncating array: removing trailing DOM node', 'color: #f44336;', removed.domNode);
+					// Alle nackten Items in einem einzigen Hardware-Paint vor dem endMarker einfügen
+					this.endMarker.parentNode.insertBefore(fragment, this.endMarker);
+				}
+
+				// ⚡ LAUFZEIT UPDATE-PFAD: Aktualisiert die Werte über den bestehenden Kontext
+				else {
+					let domIndex = 0;
+					newValue.forEach((item, idx) => {
+						if (item && item.type === 'TemplateResult') {
+							let childMeta = this.renderedChildren[domIndex];
+
+							if (childMeta && childMeta.strings === item.strings) {
+								// Pure, pfeilschnelle Dirty-Checks direkt auf den Parts des DocumentFragments
+								renderEngine(item, childMeta.wrapperContext, { quiet: true });
+							} else {
+								// Fallback bei strukturellem Drift oder Array-Erweiterung
+								if (childMeta && childMeta.domNodes) {
+									childMeta.domNodes.forEach(node => node.remove());
+								}
+
+								const itemFragment = document.createDocumentFragment();
+								renderEngine(item, itemFragment, { quiet: true });
+
+								const childNodes = Array.from(itemFragment.childNodes);
+								const fragment = document.createDocumentFragment();
+								childNodes.forEach(node => fragment.appendChild(node));
+
+								this.endMarker.parentNode.insertBefore(fragment, this.endMarker);
+
+								childMeta = {
+									type: 'template',
+									domNodes: childNodes,
+									wrapperContext: itemFragment,
+									strings: item.strings,
+								};
+								this.renderedChildren[domIndex] = childMeta;
+							}
+							domIndex++;
 						}
-						removed.domNode.remove();
+					});
+
+					// Array ist geschrumpft: Überschüssige Items restlos aus dem DOM fegen
+					while (this.renderedChildren.length > domIndex) {
+						const removed = this.renderedChildren.pop();
+						if (removed && removed.domNodes) {
+							removed.domNodes.forEach(node => node.remove());
+						}
 					}
 				}
 			}
 		}
 
-
-		// primitives
+		// --- 3. Primitive Werte ---
 		else {
 			const stringified = String(
 				newValue === undefined || newValue === null ? '' : newValue
 			);
 			if (!this.textNode) {
-				if (DEBUG) {
-					console.log(`%c[NodePart: Primitive] 🆕 Creating new text-node: "${stringified}"`, 'color: #9e9e9e;');
-				}
 				this.textNode = document.createTextNode(stringified);
 				this.marker.parentNode.insertBefore(
 					this.textNode,
 					this.marker.nextSibling
 				);
 			} else if (this.textNode.textContent !== stringified) {
-				if (DEBUG) {
-					console.log(`%c[NodePart: Primitive] 📝 Updating text content: "${this.textNode.textContent}" -> "${stringified}"`, 'color: #9e9e9e;');
-				}
 				this.textNode.textContent = stringified;
 			}
 		}
 	}
 }
+
 
 export default { NodePart, AttributePart, EventPart };

@@ -97,7 +97,7 @@ obj = { num: 42, self: null };
 				</button>
 				<h4>Global EventDelegation</h4>
 				<button @click="${this.addNewColor}">Add Item</button>
-				<button @click="${this.colors.pop}">Pop Item</button>
+				<button @click="${() => this.colors.pop()}">Pop Item</button>
 				<button @click="${this.shuffleData}">
 					Reverse Array
 				</button>
