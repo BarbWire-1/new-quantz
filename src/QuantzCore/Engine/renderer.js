@@ -9,11 +9,51 @@ import { NodePart, AttributePart, EventPart } from './partHandlers.js';
 import { normalizeValue } from '../Utils/Normalize.js';
 
 // 🎛️ LOG-KONTROLLZENTRUM
-const DEBUG = true; // Schaltet die detaillierten Tabellen & Gruppen an/aus
-const PERF_LOG = true; // Schaltet das hochpräzise Einzeilen-Performance-Log an/aus
+const DEBUG = false; // Schaltet die detaillierten Tabellen & Gruppen an/aus
+const PERF_LOG = false; // Schaltet das hochpräzise Einzeilen-Performance-Log an/aus
+
+// 📦 BATCH-SPEICHER FÜR REINES TIMING
+let batchHydrateTime = 0;
+let batchUpdateTime = 0;
+let batchHydrateCount = 0;
+let batchUpdateCount = 0;
+let isBatchScheduled = false;
+
+function flushMetrics() {
+	if (!PERF_LOG && !DEBUG) {
+		if (batchHydrateCount > 0) {
+			console.log(`[Hydrate] ${batchHydrateTime.toFixed(3)}ms (${batchHydrateCount} items)`);
+		}
+		if (batchUpdateCount > 0) {
+			console.log(`[Update] ${batchUpdateTime.toFixed(3)}ms (${batchUpdateCount} items)`);
+		}
+	}
+	// Reset
+	batchHydrateTime = 0;
+	batchUpdateTime = 0;
+	batchHydrateCount = 0;
+	batchUpdateCount = 0;
+	isBatchScheduled = false;
+}
+
+function queueMetrics(type, duration) {
+	if (type === 'Hydrate') {
+		batchHydrateTime += duration;
+		batchHydrateCount++;
+	} else {
+		batchUpdateTime += duration;
+		batchUpdateCount++;
+	}
+
+	if (!isBatchScheduled) {
+		isBatchScheduled = true;
+		queueMicrotask(flushMetrics);
+	}
+}
 
 /**
  * PHASE 1: INITIAL HYDRATION
+ * Erstellt Parts und injiziert die Initialwerte sofort in einem einzigen Durchlauf.
  */
 function hydrateContainer(templateResult, container, blueprint) {
 	const start = PERF_LOG ? performance.now() : 0;
@@ -27,7 +67,9 @@ function hydrateContainer(templateResult, container, blueprint) {
 		elementsMap[elementCounter++] = walker.currentNode;
 	}
 
-	const instanceParts = blueprint.dynamicParts.map(part => {
+	const hydrateTableData = []; // Sammelbecken für optionales Debugging
+
+	const instanceParts = blueprint.dynamicParts.map((part, i) => {
 		const targetElement = elementsMap[part.elId] || clone;
 		let handlerInstance = null;
 
@@ -38,10 +80,39 @@ function hydrateContainer(templateResult, container, blueprint) {
 		} else if (part.type === 'node') {
 			const markerComment = targetElement.childNodes[part.commentPath];
 			handlerInstance = new NodePart(markerComment);
+			//handlerInstance = new NodePart(targetElement, part);
 		}
 
 		if (handlerInstance) {
-			handlerInstance.__lastValue = undefined;
+			// 🎯 INITIAL VALUE DIREKT BEIM ERSTELLEN INJIZIEREN
+			const rawValue = templateResult.values[i];
+			let normalizedValue = rawValue;
+
+			if (handlerInstance instanceof AttributePart) {
+				// Schutz für Direktiven (use / if), andere Attribute normalisieren
+				normalizedValue =
+					handlerInstance.name === 'use' || handlerInstance.name === 'if'
+						? rawValue
+						: normalizeValue(rawValue, true);
+			} else if (handlerInstance instanceof NodePart) {
+				normalizedValue = normalizeValue(rawValue, false);
+			}
+
+			// Zustand sofort einfrieren und direkt an das DOM übergeben
+			handlerInstance.__lastValue = normalizedValue;
+			handlerInstance.update(normalizedValue, render);
+
+			// Debug-Daten einsammeln (wird bei DEBUG=false vom Compiler ignoriert)
+			if (DEBUG && !PERF_LOG) {
+				hydrateTableData.push({
+					Index: i,
+					Status: '🔥 Bare-Metal Hydrated',
+					'Part Type': handlerInstance.constructor.name,
+					Target: handlerInstance.element || handlerInstance.marker?.parentNode || 'unknown',
+					'Raw Value': rawValue,
+					'Normalized Value': normalizedValue,
+				});
+			}
 		}
 
 		return handlerInstance;
@@ -49,42 +120,6 @@ function hydrateContainer(templateResult, container, blueprint) {
 
 	container.__rootInstance = { instanceParts };
 	container.replaceChildren(clone);
-
-	// Daten verarbeiten und für Tabellen-Logging sammeln
-	const hydrateTableData = instanceParts.map((part, i) => {
-		const rawValue = templateResult.values[i];
-		let normalizedValue = rawValue;
-
-		if (part instanceof AttributePart) {
-			// Wenn es "use" ist, NIEMALS normalisieren, sondern das rohe Hook-Objekt behalten!
-			normalizedValue = part.name === 'use' ? rawValue : normalizeValue(rawValue, true);
-		} else if (part instanceof NodePart) {
-			normalizedValue = normalizeValue(rawValue, false);
-		}
-
-		part.__lastValue = normalizedValue;
-		part.update(normalizedValue, render);
-
-		return DEBUG && !PERF_LOG
-			? {
-					Index: i,
-					Status: '🔥 Hydrated',
-					'Part Type': part.constructor.name,
-					Target: part.element || part.marker?.parentNode || 'unknown',
-					'Raw Value': rawValue,
-					'Normalized Value': normalizedValue,
-				}
-			: null;
-	});
-
-	// Performance-Messung auswerten
-	if (PERF_LOG) {
-		const duration = (performance.now() - start).toFixed(3);
-		console.log(
-			`%c[QEngine: Perf] 🏗️ Hydrated <${container.localName || 'container'}> with ${instanceParts.length} parts in ${duration}ms`,
-			'color: #00bcd4; font-weight: bold;'
-		);
-	}
 
 	// Tabellarische Erfassung nur im reinen Debug-Modus
 	if (DEBUG && !PERF_LOG && instanceParts.length > 0) {
@@ -97,11 +132,6 @@ function hydrateContainer(templateResult, container, blueprint) {
 	}
 }
 
-/*
- *   Copyright (c) 2026
- *   All rights reserved.
- */
-
 /**
  * PHASE 2: RUNTIME UPDATE
  * Verarbeitet nachfolgende Wertänderungen über einen strikten Dirty-Check.
@@ -112,7 +142,7 @@ function updateContainer(templateResult, container) {
 	const updateTableData = [];
 	let hasAnyDirtyPart = false;
 	let dirtyCount = 0;
-
+console.log(container.__rootInstance);
 	for (let i = 0; i < instanceParts.length; i++) {
 		const part = instanceParts[i];
 		const rawValue = templateResult.values[i];
@@ -142,16 +172,6 @@ function updateContainer(templateResult, container) {
 				isDirty = true;
 			}
 		}
-		// 2. INTELLIGENTER ARRAY-CHECK (Flacher Abgleich der Elemente)
-		else if (Array.isArray(part.__lastValue) && Array.isArray(normalizedValue)) {
-			if (
-				part.__lastValue.length !== normalizedValue.length ||
-				part.__lastValue.some((val, idx) => val !== normalizedValue[idx])
-			) {
-				status = '⚡ Dirty (Updated)';
-				isDirty = true;
-			}
-		}
 		// 3. STANDARD PRIMITIV-CHECK
 		else if (part.__lastValue !== normalizedValue) {
 			status = '⚡ Dirty (Updated)';
@@ -171,7 +191,7 @@ function updateContainer(templateResult, container) {
 				'Part Type': part.constructor.name,
 				Target: part.element || part.marker?.parentNode || 'unknown',
 				'Raw Value': rawValue,
-				'Normalized Value': normalizedValue
+				'Normalized Value': normalizedValue,
 			});
 		}
 
@@ -201,11 +221,12 @@ function updateContainer(templateResult, container) {
 	}
 }
 
-
 /**
  * HAUPT-EINSTIEGSPUNKT
  */
 export function render(templateResult, container) {
+	const pureStart = performance.now();
+
 	if (!templateResult || templateResult.type !== 'TemplateResult') {
 		if (DEBUG && !PERF_LOG) {
 			console.log(
@@ -220,9 +241,15 @@ export function render(templateResult, container) {
 
 	const blueprint = getTemplateBlueprint(templateResult.strings);
 
-	if (!container.__rootInstance) {
+	const isHydration = !container.__rootInstance;
+
+	if (isHydration) {
 		hydrateContainer(templateResult, container, blueprint);
 	} else {
 		updateContainer(templateResult, container);
+	}
+
+	if (!PERF_LOG && !DEBUG) {
+		queueMetrics(isHydration ? 'Hydrate' : 'Update', performance.now() - pureStart);
 	}
 }

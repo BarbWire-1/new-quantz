@@ -5,7 +5,7 @@
 import { blueprintCache } from './Globals.js';
 
 // 🎛️ LOG-KONTROLLZENTRUM
-const DEBUG = true; // Auf false setzen, um alle Logs komplett zu deaktivieren
+const DEBUG = false; // Auf false setzen, um alle Logs komplett zu deaktivieren
 
 export function getTemplateBlueprint(strings) {
 	if (blueprintCache.has(strings)) {

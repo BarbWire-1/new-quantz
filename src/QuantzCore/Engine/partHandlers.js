@@ -28,6 +28,9 @@ export class AttributePart {
 		// ==========================================
 		// 🔀 SPEZIALFALL: Conditional Rendering (if)
 		// ==========================================
+				// ==========================================
+		// 🔀 SPEZIALFALL: Conditional Rendering (if)
+		// ==========================================
 		if (this.name === 'if') {
 			// Falls der Wert ein TemplateResult ist (z. B. condition ? html`A` : html`B`)
 			if (newValue && newValue.type === 'TemplateResult') {
@@ -37,17 +40,35 @@ export class AttributePart {
 					this.anchor = document.createTextNode(''); // Unsichtbarer Anker im DOM
 					this.element.parentNode.insertBefore(this.anchor, this.element);
 					this.element.parentNode.removeChild(this.element); // Das "if"-Träger-Element entfernen
+
+					// 🎯 Cache-Initialisierung auf der Instanz
+					this.cache = new Map();
 				}
 
 				// 2. Struktureller Dirty-Check: Nur neu rendern, wenn sich das Template-Layout geändert hat
 				if (this.lastValue?.strings !== newValue.strings) {
+
+					// 🎯 CACHE ANALYSIS & LOGGING (Schatten-Zweig, greift nicht in DOM-Logik ein)
+					const templateKey = newValue.strings;
+					if (this.cache.has(templateKey)) {
+						console.log(
+							`%c[QEngine: If-Cache] 🎯 HIT! Template already exists in cache. Found ${this.cache.get(templateKey).length} nodes.`,
+							'color: #4caf50; font-weight: bold;'
+						);
+					} else {
+						console.log(
+							`%c[QEngine: If-Cache] 🐢 MISS! Template layout is new. Creating fresh cache entry.`,
+							'color: #ff9800; font-style: italic;'
+						);
+					}
+
 					// Alten Inhalt sauber aus dem DOM entfernen
 					this.activeNodes?.forEach(node => {
 						if (node.parentNode) node.parentNode.removeChild(node);
 					});
 					this.activeNodes = [];
 
-					// Neues Fragment rendern
+					// Neues Fragment rendern (Dein originaler, unveränderter Fluss)
 					const fragment = document.createDocumentFragment();
 					render(newValue, fragment);
 
@@ -55,6 +76,9 @@ export class AttributePart {
 					const childNodes = Array.from(fragment.childNodes);
 					childNodes.forEach(node => this.anchor.parentNode.insertBefore(node, this.anchor));
 					this.activeNodes = childNodes;
+
+					// 🎯 CACHE POPULATION: Nodes für das gerade eben gerenderte Template im Cache ablegen
+					this.cache.set(templateKey, childNodes);
 				}
 
 				this.lastValue = newValue;
@@ -71,6 +95,7 @@ export class AttributePart {
 			this.lastValue = newValue;
 			return;
 		}
+
 		// use- namespace: use="{handlerName}" for predefined nice-to-have (directives)
 		if (this.name === 'use') {
 			//this.element.removeAttribute('use');
@@ -204,7 +229,7 @@ export class EventPart {
  */
 
 
-
+// TODO THIS USING THE COMMENT IS A NIGHTMARE!!!!!!!!
 export class NodePart {
 	constructor(markerComment) {
 		this.marker = markerComment;
@@ -238,7 +263,7 @@ export class NodePart {
 		}
 
 		// fine-grained array-handling (.map Loops und reine Arrays)
-		else if (Array.isArray(newValue)) {
+				else if (Array.isArray(newValue)) {
 			if (!this.endMarker) {
 				this.endMarker = document.createComment('end-loop');
 				this.marker.parentNode.insertBefore(
@@ -253,137 +278,84 @@ export class NodePart {
 				newValue.length > 0 &&
 				!newValue.some(item => item && item.type === 'TemplateResult');
 
+			// --- CASE B: Primitives Array ---
 			if (isPrimitiveArray) {
-				if (!this.bracketStartNode) {
-					this.bracketStartNode = document.createTextNode('[');
-					this.marker.parentNode.insertBefore(
-						this.bracketStartNode,
-						this.marker.nextSibling
-					);
-					this.bracketEndNode = document.createTextNode(']');
-					this.endMarker.parentNode.insertBefore(
-						this.bracketEndNode,
-						this.endMarker
-					);
+				const textString = newValue.toString();
+
+				// Wenn wir noch keinen TextNode haben, erstellen wir ihn vor dem endMarker
+				if (!this.textNode) {
+					this.textNode = document.createTextNode(textString);
+					this.endMarker.parentNode.insertBefore(this.textNode, this.endMarker);
+				}
+				// Wenn er existiert, machen wir einfach den direkten Dirty-Check auf dem DOM-Value
+				else if (this.textNode.textContent !== textString) {
+					this.textNode.textContent = textString;
 				}
 			}
+			// --- CASE A: TemplateResult (.map Loops) ---
+			else {
+				let domIndex = 0;
 
-			let domIndex = 0;
+				newValue.forEach((item, idx) => {
+					if (item && item.type === 'TemplateResult') {
+						let childMeta = this.renderedChildren[domIndex];
+						const wrapper = document.createElement('q-p');
+						wrapper.style.display = 'contents';
+						const domNode = wrapper.firstElementChild || wrapper;
 
-			newValue.forEach((item, idx) => {
-				// --- CASE A: TemplateResult (.map Loops) ---
-				if (item && item.type === 'TemplateResult') {
-					let childMeta = this.renderedChildren[domIndex];
-					const wrapper = document.createElement('q-p');
-					wrapper.style.display = 'contents';
-					const domNode = wrapper.firstElementChild || wrapper;
-
-					if (
-						!childMeta ||
-						childMeta.type !== 'template' ||
-						childMeta.strings !== item.strings
-					) {
-						if (childMeta && childMeta.domNode) {
-							if (DEBUG) {
-								console.log(`%c[NodePart: Loop] 🗑️ Structural change at index ${idx}. Removing old node.`, 'color: #e91e63;');
+						if (
+							!childMeta ||
+							childMeta.type !== 'template' ||
+							childMeta.strings !== item.strings
+						) {
+							if (childMeta && childMeta.domNode) {
+								if (DEBUG) {
+									console.log(`%c[NodePart: Loop] 🗑️ Structural change at index ${idx}. Removing old node.`, 'color: #e91e63;');
+								}
+								childMeta.domNode.remove();
 							}
-							childMeta.domNode.remove();
-						}
 
-						if (DEBUG) {
-							console.log(`%c[NodePart: Loop] 🆕 Creating new instance for item at index ${idx}`, 'color: #2196f3;', item);
-						}
+							if (DEBUG) {
+								console.log(`%c[NodePart: Loop] 🆕 Creating new instance for item at index ${idx}`, 'color: #2196f3;', item);
+							}
 
-						renderEngine(item, wrapper);
-						this.endMarker.parentNode.insertBefore(
-							domNode,
-							this.endMarker
-						);
-
-						childMeta = {
-							type: 'template',
-							domNode,
-							strings: item.strings,
-						};
-						this.renderedChildren[domIndex] = childMeta;
-					} else {
-						// ✨ HIER PASSIERT DAS RE-RENDER BEI VALUE-ÄNDERUNGEN
-						if (DEBUG) {
-							console.log(`%c[NodePart: Loop] 🔄 Updating existing item at index ${idx}`, 'color: #4caf50;', {
-								node: childMeta.domNode,
-								newValues: item.values
-							});
-						}
-						renderEngine(item, childMeta.domNode);
-					}
-					domIndex++;
-				}
-				// --- CASE B: Primitives Array (incl commas) ---
-				else {
-					let childMeta = this.renderedChildren[domIndex];
-					const textString = String(
-						item === undefined || item === null ? '' : item
-					);
-
-					if (!childMeta || childMeta.type !== 'text') {
-						if (childMeta && childMeta.domNode) childMeta.domNode.remove();
-						const textNode = document.createTextNode(textString);
-
-						if (DEBUG) {
-							console.log(`%c[NodePart: Array] 🆕 Appending primitive value text-node at index ${idx}: "${textString}"`, 'color: #ff9800;');
-						}
-
-						const targetLocation = this.bracketEndNode || this.endMarker;
-						targetLocation.parentNode.insertBefore(
-							textNode,
-							targetLocation
-						);
-
-						childMeta = {
-							type: 'text',
-							domNode: textNode,
-							value: textString,
-						};
-						this.renderedChildren[domIndex] = childMeta;
-					} else if (childMeta.value !== textString) {
-						if (DEBUG) {
-							console.log(`%c[NodePart: Array] 📝 Updating primitive value text at index ${idx}: "${childMeta.value}" -> "${textString}"`, 'color: #ff9800;');
-						}
-						childMeta.domNode.textContent = textString;
-						childMeta.value = textString;
-					}
-					domIndex++;
-
-					if (idx < newValue.length - 1) {
-						let commaMeta = this.renderedChildren[domIndex];
-						if (!commaMeta || commaMeta.type !== 'comma') {
-							if (commaMeta && commaMeta.domNode) commaMeta.domNode.remove();
-							const commaNode = document.createTextNode(', ');
-
-							const targetLocation = this.bracketEndNode || this.endMarker;
-							targetLocation.parentNode.insertBefore(
-								commaNode,
-								targetLocation
+							renderEngine(item, wrapper);
+							this.endMarker.parentNode.insertBefore(
+								domNode,
+								this.endMarker
 							);
 
-							commaMeta = { type: 'comma', domNode: commaNode };
-							this.renderedChildren[domIndex] = commaMeta;
+							childMeta = {
+								type: 'template',
+								domNode,
+								strings: item.strings,
+							};
+							this.renderedChildren[domIndex] = childMeta;
+						} else {
+							if (DEBUG) {
+								console.log(`%c[NodePart: Loop] 🔄 Updating existing item at index ${idx}`, 'color: #4caf50;', {
+									node: childMeta.domNode,
+									newValues: item.values
+								});
+							}
+							renderEngine(item, childMeta.domNode);
 						}
 						domIndex++;
 					}
-				}
-			});
+				});
 
-			while (this.renderedChildren.length > domIndex) {
-				const removed = this.renderedChildren.pop();
-				if (removed && removed.domNode) {
-					if (DEBUG) {
-						console.log('%c[NodePart: Loop] 🗑️ Truncating array: removing trailing DOM node', 'color: #f44336;', removed.domNode);
+				while (this.renderedChildren.length > domIndex) {
+					const removed = this.renderedChildren.pop();
+					if (removed && removed.domNode) {
+						if (DEBUG) {
+							console.log('%c[NodePart: Loop] 🗑️ Truncating array: removing trailing DOM node', 'color: #f44336;', removed.domNode);
+						}
+						removed.domNode.remove();
 					}
-					removed.domNode.remove();
 				}
 			}
 		}
+
 
 		// primitives
 		else {

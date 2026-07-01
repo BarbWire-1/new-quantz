@@ -4,11 +4,10 @@
  */
 // In /Users/barbara/new-quantz/index.js (Einstiegsdatei deiner Engine)
 
-import { QElement } from "../src/QuantzCore/element.js"
-import { html, createComponent } from "../src/QuantzCore/factory.js"
+import { QElement } from '../src/QuantzCore/element.js';
+import { html, createComponent } from '../src/QuantzCore/factory.js';
 
-
-import { autoScrollToBottom, autoScroll } from "../src/plugins/scroll.js";
+import { autoScrollToBottom, autoScroll } from '../src/plugins/scroll.js';
 
 // import {
 // 	printTimeSummary,
@@ -17,30 +16,16 @@ import { autoScrollToBottom, autoScroll } from "../src/plugins/scroll.js";
 // 	RENDER_STATS,
 // } from 'quantz';
 
-
 // DER ENTSCHEIDENDE PRODUKTIONS-EXPORT:
 //import { printTimeSummary, RENDER_STATS } from 'quantz/plugins/metrics'; // Pfad zu deiner Metrics.js anpassen!
-
-
 
 export const UserCard = createComponent(
 	'user-card',
 	class UserCard extends QElement {
-
+		// reactive props
 		count = 0;
-			// users = [
-			// 	{
-			// 		id: 0,
-			// 		name: 'John Doe',
-			// 		avatar: '',
-			// 		age: 42,
-			// 	},
-			// ];
-			users = []
-
-			totalInteractions = 0;
-
-
+		users = [];
+		totalInteractions = 0;
 
 		updateData(n) {
 			this.count = n;
@@ -49,9 +34,7 @@ export const UserCard = createComponent(
 
 		async fetchUserData() {
 			try {
-				const response = await fetch(
-					`https://randomuser.me/api/?results=${this.count}`
-				);
+				const response = await fetch(`https://randomuser.me/api/?results=${this.count}`);
 				if (!response.ok) throw new Error('API Network Crash');
 				const data = await response.json();
 
@@ -120,7 +103,6 @@ export const UserCard = createComponent(
 									<image style="border-radius: 50%" src="${u.avatar}"></image>
 									<p><strong>${u.name}</strong></p>
 									<p><strong>${u.age}</strong></p>
-									<p style="font-size: 11px; color: crimson;">Loop Verification ID: ${u.id}</p>
 
 									<button
 										@click="${() => {
@@ -136,7 +118,6 @@ export const UserCard = createComponent(
 					</div>
 				</div>
 			`;
-
 		}
 	}
 );
