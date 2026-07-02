@@ -17,20 +17,34 @@ let batchHydrateTime = 0;
 let batchUpdateTime = 0;
 let batchHydrateCount = 0;
 let batchUpdateCount = 0;
+let batchHydrateParts = 0; // 🎯 Speichert die Summe aller initialisierten Parts
 let isBatchScheduled = false;
 
+// 🚀 REKTIFIZIERT: Verarbeitet und druckt die Summen-Metrik nach dem synchronen Thread-Ende
 function flushMetrics() {
+	if (PERF_LOG) {
+		if (batchHydrateCount > 0) {
+			console.log(
+				`%c[QEngine: Perf] 🏗️ Hydration Sum: ${batchHydrateParts} DOM-parts initialized across ${batchHydrateCount} containers in ${batchHydrateTime.toFixed(3)}ms`,
+				'color: #00bcd4; font-weight: bold;'
+			);
+		}
+	}
+
+	// Reset
 	batchHydrateTime = 0;
 	batchUpdateTime = 0;
 	batchHydrateCount = 0;
 	batchUpdateCount = 0;
+	batchHydrateParts = 0;
 	isBatchScheduled = false;
 }
 
-function queueMetrics(type, duration) {
+function queueMetrics(type, duration, partCount = 0) {
 	if (type === 'Hydrate') {
 		batchHydrateTime += duration;
 		batchHydrateCount++;
+		batchHydrateParts += partCount; // Addiere Parts zur Summe
 	} else {
 		batchUpdateTime += duration;
 		batchUpdateCount++;
@@ -47,8 +61,8 @@ function queueMetrics(type, duration) {
  * Erstellt Parts und injiziert die Initialwerte sofort in einem einzigen Durchlauf.
  */
 function hydrateContainer(templateResult, container, blueprint) {
-	// 🎯 EINGEBAUT: Startzeitpunkt für die Hydration erfassen
-	const start = PERF_LOG ? performance.now() : 0;
+	// 🎯 Startzeitpunkt lokal erfassen
+	const start = performance.now();
 
 	const clone = blueprint.template.content.cloneNode(true);
 	const elementsMap = {};
@@ -114,13 +128,10 @@ function hydrateContainer(templateResult, container, blueprint) {
 		container.replaceChildren(clone);
 	}
 
-	// 🎯 EINGEBAUT: Bare-Metal Performance-Log für die Hydration ausgeben
-	if (PERF_LOG && instanceParts.length > 0) {
-		const duration = (performance.now() - start).toFixed(3);
-		console.log(
-			`%c[QEngine: Perf] 🏗️ Hydrated <${container.localName || 'container'}>: ${instanceParts.length} DOM-parts initialized in ${duration}ms`,
-			'color: #00bcd4; font-weight: bold;'
-		);
+	// 🎯 IN SUMME: Keine Einzellogs hier! Schiebe Metriken direkt in die Microtask-Sammelqueue
+	if (instanceParts.length > 0) {
+		const duration = performance.now() - start;
+		queueMetrics('Hydrate', duration, instanceParts.length);
 	}
 
 	if (DEBUG && instanceParts.length > 0) {
@@ -150,7 +161,6 @@ function updateContainer(templateResult, container) {
 
 		let normalizedValue = rawValue;
 		if (part instanceof AttributePart) {
-			// 🎯 FIX: Hier wurde deine "if"-Direktive brutal zerstört! Jetzt exakt wie in Phase 1 geschützt.
 			normalizedValue = part.name === 'use' || part.name === 'if' ? rawValue : normalizeValue(rawValue, true);
 		} else if (part instanceof NodePart) {
 			normalizedValue = normalizeValue(rawValue, false);
