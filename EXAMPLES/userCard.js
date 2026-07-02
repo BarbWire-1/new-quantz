@@ -154,7 +154,7 @@ export const UserCard = createComponent(
 							🔥 Hot Reload
 						</button>
 
-						<!-- 🎯 CONDITIONAL RENDERING TEST AUẞERHALB DER SCHLEIFE -->
+						<!--  CONDITIONAL RENDERING TEST  -->
 						<div
 							if="${this.totalInteractions % 2 === 0
 								? html`<div style="background: #e8f5e9; padding: 5px 10px; border-radius: 4px;">
